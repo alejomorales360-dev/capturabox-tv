@@ -421,11 +421,18 @@
         <div class="card kpi">
           <div class="kpi-top">
             <div class="kpi-ic" style="background:rgba(224,165,44,.15);color:var(--gold);">
-              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             </div>
-            <div class="kpi-txt"><div class="l">Clientes activos hoy</div><div class="v" id="kpiClientes">—</div></div>
+            <div class="kpi-txt"><div class="l">Contenedores vacíos hoy</div><div class="v" id="kpiVacios">—</div></div>
           </div>
-          <div class="kpi-break" id="kpiClientesBreak"></div>
+          <div class="kpi-break" id="kpiVaciosBreak"></div>
+          <div style="border-top:1px solid rgba(255,255,255,.08); margin-top:8px; padding-top:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:#7c6cd8; font-size:11px; font-weight:700;">📤 DESPACHOS</span>
+              <span style="color:#7c6cd8; font-size:20px; font-weight:800;" id="kpiDespachos">—</span>
+            </div>
+            <div style="font-size:10px; color:rgba(255,255,255,.4); margin-top:2px;" id="kpiDespachosBreak"></div>
+          </div>
         </div>
       </div>
     </main>
@@ -695,6 +702,41 @@ async function cargarParcialsDashboard() {
   }
 }
 
+/* Contenedores vacíos que llegaron (Gate Control · Recepción con estado
+   Empty) y contenedores despachados hoy (Gate Control · Despacho),
+   con desglose por cliente. Reemplaza la card de "Clientes activos". */
+function gcPorCliente_(lista) {
+  var acc = {};
+  lista.forEach(function (m) {
+    var c = m.cliente || '—';
+    acc[c] = (acc[c] || 0) + 1;
+  });
+  return Object.keys(acc).map(function (c) { return { cliente: c, cant: acc[c] }; })
+    .sort(function (a, b) { return b.cant - a.cant; });
+}
+function gcDesgloseTexto_(arr) {
+  if (!arr.length) return 'Sin movimientos hoy.';
+  return arr.slice(0, 3).map(function (c) { return c.cliente + ' <b>' + c.cant + '</b>'; }).join(' &nbsp;·&nbsp; ');
+}
+async function cargarGateControlDashboard() {
+  try {
+    var hoy = new Date();
+    var rangoHoy = { fechaDesde: fechaISO(hoy), fechaHasta: fechaISO(hoy) };
+    var data = await pedirJSON('listarMovimientosGateControl', rangoHoy);
+    var movs = (data && data.ok && Array.isArray(data.movimientos)) ? data.movimientos : [];
+
+    var vacios = movs.filter(function (m) { return m.tipo === 'RECEPCION' && m.estado === 'VACIO'; });
+    var despachos = movs.filter(function (m) { return m.tipo === 'DESPACHO'; });
+
+    setSiCambio('kpiVacios', fmt(vacios.length), 'gcVacios');
+    pintarSiCambio('kpiVaciosBreak', 'gcVaciosBreak', gcDesgloseTexto_(gcPorCliente_(vacios)));
+    setSiCambio('kpiDespachos', fmt(despachos.length), 'gcDespachos');
+    pintarSiCambio('kpiDespachosBreak', 'gcDespachosBreak', gcDesgloseTexto_(gcPorCliente_(despachos)));
+  } catch (e) {
+    console.error('Error cargando datos de Gate Control:', e);
+  }
+}
+
 async function actualizarTodo() {
   try {
     const hoy = new Date();
@@ -714,6 +756,7 @@ async function actualizarTodo() {
     ]);
 
     cargarParcialsDashboard();
+    cargarGateControlDashboard();
 
     if (dataHoy && dataHoy.ok) pintarKpisYAnillo(dataHoy);
     if (dataSemana && dataSemana.ok) {
@@ -742,12 +785,9 @@ function pintarKpisYAnillo(data) {
   const k = data.kpis || {};
   setSiCambio('kpiBox', fmt(k.boxConsolidados), 'box');
   setSiCambio('kpiM3', fmt(k.m3Movilizados, 1) + '<small>m³</small>', 'm3');
-  setSiCambio('kpiClientes', fmt(k.clientesActivos), 'clientes');
 
   pintarSiCambio('kpiBoxBreak', 'boxBreak', desgloseTexto(data.consolidadoPorCliente, 'contenedores'));
   pintarSiCambio('kpiM3Break', 'm3Break', desgloseTexto(data.consolidadoPorCliente, 'm3'));
-  pintarSiCambio('kpiClientesBreak', 'clientesBreak',
-    (data.consolidadoPorCliente && data.consolidadoPorCliente.length) ? (data.consolidadoPorCliente.length + ' clientes con movimiento hoy') : 'Sin clientes activos hoy.');
 
   const rp = data.recepcionPorCliente || [];
   const totalCamiones = rp.reduce(function (s, c) { return s + (Number(c.camiones) || 0); }, 0);
