@@ -490,8 +490,8 @@
           Últimos consolidados
         </div>
         <div class="table-scroll">
-        <table class="act-table"><thead><tr><th></th><th>Contenedor</th><th>Cliente</th><th>Nave</th></tr></thead>
-          <tbody id="listConsolidados"><tr><td colspan="4" class="act-empty">Cargando…</td></tr></tbody>
+        <table class="act-table"><thead><tr><th></th><th>Fecha</th><th>Contenedor</th><th>Cliente</th><th>Nave</th></tr></thead>
+          <tbody id="listConsolidados"><tr><td colspan="5" class="act-empty">Cargando…</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -901,21 +901,25 @@ function pintarConsolidados(detalle) {
   cargarParcialsDashboard().then(function(parciales) {
     var filasCerradas = ultimos.map(function (d) {
       return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
+        '<td>' + (d.fecha || '\u2014') + '</td>' +
         '<td>' + (d.contenedor || '\u2014') + '</td><td>' + (d.cliente || '\u2014') + '</td><td>' + (d.nave || '\u2014') + '</td></tr>';
     });
 
     var filasParciales = (parciales || []).map(function (p) {
       return '<tr style="background:rgba(224,138,43,.08);"><td class="dotcell"><span class="rowdot" style="background:#e0a52c;"></span></td>' +
-        '<td style="color:#e0a52c;">' + (p.contenedor || '\u2014') + '</td><td>' + (p.cliente || '\u2014') + '</td><td style="font-size:10px;color:#e0a52c;">⏳ En proceso</td></tr>';
+        '<td style="color:#e0a52c;">' + (p.fecha || '\u2014') + '</td>' +
+        '<td style="color:#e0a52c;">' + (p.contenedor || '\u2014') + '</td><td>' + (p.cliente || '\u2014') + '</td>' +
+        '<td style="color:#e0a52c;">' + (p.nave || '\u2014') + ' <span title="En proceso" style="margin-left:4px;">⏳</span></td></tr>';
     });
 
     var todas = filasParciales.concat(filasCerradas);
-    var html = !todas.length ? filaVacia(4, 'Sin consolidados registrados esta semana.') : todas.join('');
+    var html = !todas.length ? filaVacia(5, 'Sin consolidados registrados esta semana.') : todas.join('');
     pintarSiCambio('listConsolidados', 'consolidados', html);
   }).catch(function() {
-    var html = !ultimos.length ? filaVacia(4, 'Sin consolidados registrados esta semana.') :
+    var html = !ultimos.length ? filaVacia(5, 'Sin consolidados registrados esta semana.') :
       ultimos.map(function (d) {
         return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
+          '<td>' + (d.fecha || '\u2014') + '</td>' +
           '<td>' + (d.contenedor || '\u2014') + '</td><td>' + (d.cliente || '\u2014') + '</td><td>' + (d.nave || '\u2014') + '</td></tr>';
       }).join('');
     pintarSiCambio('listConsolidados', 'consolidados', html);
