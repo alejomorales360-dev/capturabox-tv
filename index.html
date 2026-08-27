@@ -120,9 +120,9 @@
   .btn-hist .ic{font-size:.95vw;}
 
   /* ===== MAIN (fila 2, col izquierda) ===== */
-  main{grid-column:1;display:grid;grid-template-columns:1fr 1.75fr;gap:1.4vw;height:31vh;}
+  main{grid-column:1;display:grid;grid-template-columns:1fr 1.75fr;gap:1.4vw;min-height:31vh;}
 
-  .card{background:var(--card);border:1px solid var(--card-line);border-radius:.9vw;}
+  .card{background:var(--card);border:1px solid var(--card-line);border-radius:.9vw;overflow:hidden;}
 
   .ring-card{
     display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -143,7 +143,7 @@
   .ring-foot{position:absolute;bottom:1.3vh;left:0;right:0;text-align:center;font-size:.66vw;color:var(--muted);letter-spacing:.04em;}
   .ring-foot b{color:var(--ink);}
 
-  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1.1vw;min-height:0;}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:1.1vw;min-height:0;}
   .kpi{padding:1vh 1.1vw;display:flex;flex-direction:column;justify-content:center;gap:.35vh;}
   .kpi-top{display:flex;align-items:center;gap:.7vw;}
   .kpi-ic{width:2.1vw;height:2.1vw;min-width:26px;min-height:26px;border-radius:.5vw;display:flex;align-items:center;justify-content:center;font-size:1.05vw;flex-shrink:0;}
@@ -156,7 +156,7 @@
   .flash{color:var(--gold) !important;}
 
   /* ===== FILA MEDIA (trend + resumen) ===== */
-  .midrow{grid-column:1;display:grid;grid-template-columns:1.5fr 1fr;gap:1.4vw;height:22vh;}
+  .midrow{grid-column:1;display:grid;grid-template-columns:1.5fr 1fr;gap:1.4vw;min-height:22vh;}
   .midrow .card{padding:1.2vh 1.3vw;display:flex;flex-direction:column;min-height:0;}
   .midrow .t{font-size:.74vw;letter-spacing:.05em;text-transform:uppercase;font-weight:600;margin-bottom:.8vh;text-align:center;}
   .midrow .card:first-child .t{color:var(--teal);}
