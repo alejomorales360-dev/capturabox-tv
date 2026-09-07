@@ -999,8 +999,11 @@ function mostrarDetalleDia_(fechaISO) {
       '<td>' + (d.contenedor || '—') + '</td>' +
       '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
       '<td>' + (d.nave || '—') + '</td>' +
+      '<td>' + (d.producto || '—') + '</td>' +
+      '<td>' + (d.entrega || '—') + '</td>' +
+      '<td>' + (d.sello || '—') + '</td>' +
     '</tr>';
-  }).join('') : filaVacia(4, 'Sin contenedores consolidados este día.');
+  }).join('') : filaVacia(7, 'Sin contenedores consolidados este día.');
 
   const fechaLegible = new Date(fechaISO + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -1020,7 +1023,7 @@ function mostrarDetalleDia_(fechaISO) {
       '</div>' +
       resumenHtml +
       '<div class="dia-detalle-scroll"><table class="act-table">' +
-        '<thead><tr><th>Hora</th><th>Contenedor</th><th>Cliente</th><th>Nave</th></tr></thead>' +
+        '<thead><tr><th>Hora</th><th>Contenedor</th><th>Cliente</th><th>Nave</th><th>Producto</th><th>Entrega</th><th>Sello</th></tr></thead>' +
         '<tbody>' + filasHtml + '</tbody>' +
       '</table></div>' +
     '</div>';
