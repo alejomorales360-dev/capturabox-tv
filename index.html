@@ -123,6 +123,8 @@
   main{grid-column:1;display:grid;grid-template-columns:1fr 1.75fr;gap:1.4vw;min-height:31vh;}
 
   .card{background:var(--card);border:1px solid var(--card-line);border-radius:.9vw;overflow:hidden;}
+  .card.clickable{cursor:pointer;transition:background .15s,border-color .15s;}
+  .card.clickable:hover{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.16);}
 
   .ring-card{
     display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -261,6 +263,10 @@
   .dia-detalle-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:1.4vh 1.6vw 1.6vh;}
   .dia-detalle-scroll table.act-table{width:100%;table-layout:fixed;font-size:1vw;}
   .dia-detalle-scroll table.act-table td,.dia-detalle-scroll table.act-table th{white-space:normal;overflow-wrap:break-word;}
+  .dia-detalle-scroll table.act-table tfoot td{padding-top:.8vh;}
+  .kpi-detalle-sub{font-size:.85vw;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin:1.8vh 0 .8vh;}
+  .kpi-detalle-sub:first-child{margin-top:0;}
+  .kpi-detalle-nota{padding:0 1.6vw;font-size:.78vw;color:var(--muted);line-height:1.5;}
 
   /* ============================================================
      VISTA HISTÓRICA (capa completa sobre el dashboard)
@@ -384,7 +390,7 @@
     </header>
 
     <main>
-      <div class="card ring-card">
+      <div class="card ring-card clickable" onclick="mostrarDetalleBodega()">
         <div class="label">Ocupación de bodega</div>
         <div class="ring-body">
         <div class="ring-wrap">
@@ -418,7 +424,7 @@
       </div>
 
       <div class="kpi-grid">
-        <div class="card kpi">
+        <div class="card kpi clickable" onclick="mostrarDetalleConsolidadosHoy()">
           <div class="kpi-top">
             <div class="kpi-ic" style="background:rgba(23,162,160,.15);color:var(--teal);">
               <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -435,7 +441,7 @@
           </div>
         </div>
 
-        <div class="card kpi">
+        <div class="card kpi clickable" onclick="mostrarDetalleRecepcionHoy()">
           <div class="kpi-top">
             <div class="kpi-ic" style="background:rgba(63,174,106,.15);color:var(--sage);">
               <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -445,7 +451,7 @@
           <div class="kpi-break" id="kpiCamionesBreak"></div>
         </div>
 
-        <div class="card kpi">
+        <div class="card kpi clickable" onclick="mostrarDetalleVolumenHoy()">
           <div class="kpi-top">
             <div class="kpi-ic" style="background:rgba(124,108,216,.15);color:var(--indigo);">
               <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -455,7 +461,7 @@
           <div class="kpi-break" id="kpiM3Break"></div>
         </div>
 
-        <div class="card kpi">
+        <div class="card kpi clickable" onclick="mostrarDetalleVaciosHoy()">
           <div class="kpi-top">
             <div class="kpi-ic" style="background:rgba(224,165,44,.15);color:var(--gold);">
               <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -730,6 +736,7 @@ async function cargarParcialsDashboard() {
       return [];
     }
     var parciales = data.parciales;
+    window._kpiParciales = parciales;
     document.getElementById('kpiParciales').textContent = parciales.length;
 
     var porSup = {};
@@ -774,6 +781,8 @@ async function cargarGateControlDashboard() {
 
     var vacios = movs.filter(function (m) { return m.tipo === 'RECEPCION' && m.estado === 'VACIO'; });
     var despachos = movs.filter(function (m) { return m.tipo === 'DESPACHO'; });
+    window._kpiVacios = vacios;
+    window._kpiDespachos = despachos;
 
     setSiCambio('kpiVacios', fmt(vacios.length), 'gcVacios');
     pintarSiCambio('kpiVaciosBreak', 'gcVaciosBreak', gcDesgloseTexto_(gcPorCliente_(vacios)));
@@ -804,6 +813,14 @@ async function actualizarTodo() {
 
     cargarParcialsDashboard();
     cargarGateControlDashboard();
+
+    // Cache para los modales de detalle de las tarjetas KPI (Consolidados
+    // hoy, Recepción hoy, Volumen movilizado hoy, Ocupación bodega) — se
+    // guarda lo mismo que ya se pide siempre para pintar el dashboard, sin
+    // llamadas extra al servidor.
+    if (dataHoy && dataHoy.ok) window._kpiDataHoy = dataHoy;
+    if (dataRecepcion && dataRecepcion.ok) window._kpiDetalleRecepcionSemana = dataRecepcion.detalle || [];
+    if (dataConsolidado && dataConsolidado.ok) window._kpiDetalleConsolidadoSemana = dataConsolidado.detalle || [];
 
     if (dataHoy && dataHoy.ok) pintarKpisYAnillo(dataHoy);
     if (dataSemana && dataSemana.ok) {
@@ -1047,6 +1064,233 @@ function mostrarDetalleDia_(fechaISO) {
 function cerrarDetalleDia_() {
   const el = document.getElementById('diaDetalleOverlay');
   if (el) el.classList.remove('open');
+}
+
+/* =========================================================
+   DETALLE AL HACER CLIC EN LAS TARJETAS KPI ("hoy") Y EN
+   OCUPACIÓN DE BODEGA — mismo patrón de overlay a pantalla
+   completa que "Consolidados · [día]", pero genérico: cada
+   tarjeta arma su propio contenido y usa mostrarOverlayDetalle_
+   para mostrarlo. No pide datos nuevos al servidor: reutiliza lo
+   que actualizarTodo() ya trae en cada ciclo de refresco (cacheado
+   en window._kpi...).
+========================================================= */
+function _fechaHoyCl_() {
+  var d = new Date();
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+function mostrarOverlayDetalle_(titulo, bodyHtml) {
+  let el = document.getElementById('kpiDetalleOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'kpiDetalleOverlay';
+    el.className = 'dia-detalle-overlay';
+    el.addEventListener('click', function (e) { if (e.target === el) cerrarOverlayDetalle_(); });
+    document.body.appendChild(el);
+  }
+  el.innerHTML =
+    '<div class="dia-detalle-card">' +
+      '<div class="dia-detalle-head">' +
+        '<div class="dia-detalle-titulo">' + titulo + '</div>' +
+        '<button class="dia-detalle-cerrar" onclick="cerrarOverlayDetalle_()">✕</button>' +
+      '</div>' +
+      bodyHtml +
+    '</div>';
+  el.classList.add('open');
+}
+function cerrarOverlayDetalle_() {
+  const el = document.getElementById('kpiDetalleOverlay');
+  if (el) el.classList.remove('open');
+}
+
+function _chipsPorCliente_(lista, campoN, campoM3) {
+  if (!lista || !lista.length) return '';
+  return '<div class="dia-detalle-resumen">' + lista.map(function (c) {
+    return '<div class="dia-detalle-chip">' +
+      '<span class="dot" style="background:' + colorCliente(c.cliente) + ';"></span>' +
+      '<span class="nombre">' + c.cliente + '</span>' +
+      (campoN ? '<span class="n">' + fmt(c[campoN]) + '</span>' : '') +
+      (campoM3 ? '<span class="m3">' + fmt(c[campoM3], 1) + ' m³</span>' : '') +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+function mostrarDetalleConsolidadosHoy() {
+  const hoyCl = _fechaHoyCl_();
+  const porCliente = (window._kpiDataHoy && window._kpiDataHoy.consolidadoPorCliente) || [];
+  const detalleHoy = (window._kpiDetalleConsolidadoSemana || []).filter(function (d) { return d.fecha === hoyCl; });
+  const parciales = window._kpiParciales || [];
+
+  const filasHtml = detalleHoy.length ? detalleHoy.map(function (d) {
+    return '<tr>' +
+      '<td>' + (d.horaInicio || '—') + '</td>' +
+      '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
+      '<td>' + (d.nave || '—') + '</td>' +
+      '<td>' + (d.contenedor || '—') + '</td>' +
+      '<td>' + (d.sello || '—') + '</td>' +
+      '<td>' + (d.entrega || '—') + '</td>' +
+      '<td>' + (d.producto || '—') + '</td>' +
+    '</tr>';
+  }).join('') : filaVacia(7, 'Sin consolidados confirmados hoy.');
+
+  const filasProceso = parciales.length ? parciales.map(function (p) {
+    return '<tr>' +
+      '<td>' + (p.horaInicio || '—') + '</td>' +
+      '<td>' + (p.contenedor || '—') + '</td>' +
+      '<td style="color:' + colorCliente(p.cliente || '') + ';font-weight:700;">' + (p.cliente || '—') + '</td>' +
+      '<td>' + (p.nave || '—') + '</td>' +
+      '<td>' + (p.supervisor || '—') + '</td>' +
+      '<td>' + fmt(p.totalLotes || 0) + '</td>' +
+      '<td>' + (p.totalPeso != null && p.totalPeso !== '' ? fmt(p.totalPeso, 1) : '—') + '</td>' +
+    '</tr>';
+  }).join('') : filaVacia(7, 'Sin contenedores en proceso.');
+
+  const body = _chipsPorCliente_(porCliente, 'contenedores', 'm3') +
+    '<div class="dia-detalle-scroll">' +
+      '<div class="kpi-detalle-sub">Confirmados hoy (' + detalleHoy.length + ')</div>' +
+      '<table class="act-table"><thead><tr><th>Hora</th><th>Cliente</th><th>Nave</th><th>Contenedor</th><th>Sello</th><th>Entrega</th><th>Producto</th></tr></thead>' +
+      '<tbody>' + filasHtml + '</tbody></table>' +
+      '<div class="kpi-detalle-sub">⏳ En proceso (' + parciales.length + ')</div>' +
+      '<table class="act-table"><thead><tr><th>Hora inicio</th><th>Contenedor</th><th>Cliente</th><th>Nave</th><th>Supervisor</th><th>Lotes</th><th>Peso (kg)</th></tr></thead>' +
+      '<tbody>' + filasProceso + '</tbody></table>' +
+    '</div>';
+
+  mostrarOverlayDetalle_('📦 Consolidados — Hoy', body);
+}
+
+function mostrarDetalleRecepcionHoy() {
+  const hoyCl = _fechaHoyCl_();
+  const porCliente = (window._kpiDataHoy && window._kpiDataHoy.recepcionPorCliente) || [];
+  const detalleHoy = (window._kpiDetalleRecepcionSemana || []).filter(function (d) { return d.fecha === hoyCl; });
+
+  const filasHtml = detalleHoy.length ? detalleHoy.map(function (d) {
+    return '<tr>' +
+      '<td>' + (d.horaInicio || '—') + '</td>' +
+      '<td>' + (d.horaTermino || '—') + '</td>' +
+      '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
+      '<td>' + (d.patente || '—') + '</td>' +
+      '<td>' + (d.producto || '—') + '</td>' +
+      '<td>' + (d.proteccion || '—') + '</td>' +
+      '<td>' + fmt(d.m3, 1) + '</td>' +
+      '<td>' + (d.danio === 'SI' ? '⚠️ Sí' : 'No') + '</td>' +
+    '</tr>';
+  }).join('') : filaVacia(8, 'Sin recepciones hoy.');
+
+  const body = _chipsPorCliente_(porCliente, 'camiones', 'm3') +
+    '<div class="dia-detalle-scroll"><table class="act-table">' +
+      '<thead><tr><th>Hora inicio</th><th>Hora término</th><th>Cliente</th><th>Patente</th><th>Producto</th><th>Protección</th><th>m³</th><th>Daño</th></tr></thead>' +
+      '<tbody>' + filasHtml + '</tbody>' +
+    '</table></div>';
+
+  mostrarOverlayDetalle_('🚚 Recepción — Hoy', body);
+}
+
+function mostrarDetalleVolumenHoy() {
+  const d = window._kpiDataHoy || {};
+  const cons = d.consolidadoPorCliente || [];
+  const rec = d.recepcionPorCliente || [];
+  const reex = d.reexpedicionPorCliente || [];
+
+  const acc = {};
+  function sumar(arr, campo) {
+    arr.forEach(function (c) {
+      const k = c.cliente || 'Sin cliente';
+      if (!acc[k]) acc[k] = { cliente: k, con: 0, rec: 0, reex: 0 };
+      acc[k][campo] += Number(c.m3) || 0;
+    });
+  }
+  sumar(cons, 'con'); sumar(rec, 'rec'); sumar(reex, 'reex');
+
+  const filas = Object.keys(acc).map(function (k) { return acc[k]; })
+    .sort(function (a, b) { return (b.con + b.rec + b.reex) - (a.con + a.rec + a.reex); });
+
+  const sumaCol = function (campo) { return filas.reduce(function (s, c) { return s + c[campo]; }, 0); };
+  const totalGeneral = sumaCol('con') + sumaCol('rec') + sumaCol('reex');
+
+  const filasHtml = filas.length ? filas.map(function (c) {
+    const total = c.con + c.rec + c.reex;
+    return '<tr>' +
+      '<td style="color:' + colorCliente(c.cliente) + ';font-weight:700;">' + c.cliente + '</td>' +
+      '<td>' + fmt(c.con, 1) + '</td>' +
+      '<td>' + fmt(c.rec, 1) + '</td>' +
+      '<td>' + fmt(c.reex, 1) + '</td>' +
+      '<td style="font-weight:800;">' + fmt(total, 1) + '</td>' +
+    '</tr>';
+  }).join('') : filaVacia(5, 'Sin movimiento de volumen hoy.');
+
+  const body = '<div class="dia-detalle-scroll"><table class="act-table">' +
+    '<thead><tr><th>Cliente</th><th>Consolidado m³</th><th>Recepción m³</th><th>Reexpedición m³</th><th>Total m³</th></tr></thead>' +
+    '<tbody>' + filasHtml + '</tbody>' +
+    '<tfoot><tr style="font-weight:800;border-top:1px solid rgba(255,255,255,.15);">' +
+      '<td>TOTAL</td><td>' + fmt(sumaCol('con'), 1) + '</td><td>' + fmt(sumaCol('rec'), 1) + '</td>' +
+      '<td>' + fmt(sumaCol('reex'), 1) + '</td><td>' + fmt(totalGeneral, 1) + '</td>' +
+    '</tr></tfoot>' +
+  '</table></div>';
+
+  mostrarOverlayDetalle_('📊 Volumen Movilizado — Hoy', body);
+}
+
+function mostrarDetalleVaciosHoy() {
+  const vacios = window._kpiVacios || [];
+  const despachos = window._kpiDespachos || [];
+
+  function horaDe(m) {
+    if (!m.fecha) return '—';
+    try { return new Date(m.fecha).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+    catch (e) { return '—'; }
+  }
+  function filasDe(lista) {
+    return lista.length ? lista.map(function (m) {
+      return '<tr>' +
+        '<td>' + horaDe(m) + '</td>' +
+        '<td style="color:' + colorCliente(m.cliente || '') + ';font-weight:700;">' + (m.cliente || '—') + '</td>' +
+        '<td>' + (m.patente || '—') + '</td>' +
+        '<td>' + (m.transportista || '—') + '</td>' +
+        '<td>' + (m.contenedor || '—') + '</td>' +
+      '</tr>';
+    }).join('') : filaVacia(5, 'Sin movimientos.');
+  }
+
+  const body = '<div class="dia-detalle-scroll">' +
+    '<div class="kpi-detalle-sub">🚛 Vacíos recibidos (' + vacios.length + ')</div>' +
+    '<table class="act-table"><thead><tr><th>Hora</th><th>Cliente</th><th>Patente</th><th>Transportista</th><th>Contenedor</th></tr></thead>' +
+    '<tbody>' + filasDe(vacios) + '</tbody></table>' +
+    '<div class="kpi-detalle-sub">📤 Despachos (' + despachos.length + ')</div>' +
+    '<table class="act-table"><thead><tr><th>Hora</th><th>Cliente</th><th>Patente</th><th>Transportista</th><th>Contenedor</th></tr></thead>' +
+    '<tbody>' + filasDe(despachos) + '</tbody></table>' +
+  '</div>';
+
+  mostrarOverlayDetalle_('🚛 Contenedores Vacíos y Despachos — Hoy', body);
+}
+
+function mostrarDetalleBodega() {
+  const st = (window._kpiDataHoy && window._kpiDataHoy.stock) || {};
+  const porCliente = st.porCliente || [];
+  const totalVol = Number(st.totalVolumen) || 0;
+
+  const filasHtml = porCliente.length ? porCliente.map(function (c) {
+    const pct = totalVol > 0 ? (c.volumen / totalVol) * 100 : 0;
+    return '<tr>' +
+      '<td style="color:' + colorCliente(c.cliente) + ';font-weight:700;">' + c.cliente + '</td>' +
+      '<td>' + fmt(c.volumen, 1) + '</td>' +
+      '<td>' + fmt(c.lotes) + '</td>' +
+      '<td>' + pct.toFixed(1) + '%</td>' +
+    '</tr>';
+  }).join('') : filaVacia(4, 'Sin stock vigente.');
+
+  const body =
+    '<div class="kpi-detalle-nota">Nota: el m² por cliente aún no se registra por lote — hoy solo se controla la capacidad total de la bodega en m² y m³ (ver pie de esta tabla).</div>' +
+    '<div class="dia-detalle-scroll"><table class="act-table">' +
+      '<thead><tr><th>Cliente</th><th>m³</th><th>Lotes</th><th>% ocupación</th></tr></thead>' +
+      '<tbody>' + filasHtml + '</tbody>' +
+      '<tfoot><tr style="font-weight:800;border-top:1px solid rgba(255,255,255,.15);">' +
+        '<td>TOTAL (cap. ' + fmt(st.capacidadM3, 0) + ' m³ / ' + fmt(st.capacidadM2, 0) + ' m²)</td>' +
+        '<td>' + fmt(totalVol, 1) + '</td><td>' + fmt(st.totalLotes) + '</td><td>100%</td>' +
+      '</tr></tfoot>' +
+    '</table></div>';
+
+  mostrarOverlayDetalle_('🏬 Ocupación de Bodega por Cliente', body);
 }
 
 function filaVacia(cols, texto) {
