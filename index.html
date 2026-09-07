@@ -250,38 +250,30 @@
   .hist-body{flex:1;display:grid;grid-template-columns:1.15fr .95fr .9fr;grid-template-rows:auto auto 1fr;gap:1.2vh 1.2vw;min-height:0;}
   .hist-chart{grid-column:1;grid-row:1 / 3;}
   .hist-vol{grid-column:2;grid-row:1 / 3;}
-  .hist-comp{grid-column:3;grid-row:1;}
+  .hist-cumpl{grid-column:3;grid-row:1;}
   .hist-records{grid-column:3;grid-row:2;}
   .hist-naves{grid-column:1 / -1;grid-row:3;min-height:0;}
   .hist-card{background:var(--card);border:1px solid var(--card-line);border-radius:.9vw;padding:1.3vh 1.4vw;display:flex;flex-direction:column;min-height:0;}
   .hist-card .t{font-size:.78vw;letter-spacing:.05em;text-transform:uppercase;font-weight:600;margin-bottom:1vh;color:var(--teal);flex-shrink:0;}
   .hist-vol .t{color:var(--sage);}
-  .hist-comp .t{color:var(--gold);}
+  .hist-cumpl .t{color:var(--gold);}
   .hist-records .t{color:#d98cc4;}
   .hist-naves .t{color:var(--indigo);}
   .hist-canvas{flex:1;position:relative;min-height:16vh;}
 
-  /* ---- Récords ---- */
+  /* ---- Récords (sin iconos: un acento de color a la izquierda basta
+     para distinguir cada fila, sin verse informal) ---- */
   .rec-grid{display:flex;flex-direction:column;gap:.75vh;flex:1;justify-content:center;}
-  .rec-row{display:flex;align-items:center;gap:.7vw;}
-  .rec-ic{
-    width:1.9vw;height:1.9vw;min-width:23px;min-height:23px;border-radius:.42vw;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;font-size:.95vw;
+  .rec-row{
+    display:flex;align-items:center;justify-content:space-between;gap:.7vw;
+    padding:.6vh .7vw;border-left:3px solid var(--muted);border-radius:.3vw;
+    background:rgba(255,255,255,.02);
   }
   .rec-txt{flex:1;min-width:0;}
   .rec-txt .l{font-size:.6vw;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;line-height:1.2;}
   .rec-txt .v{font-family:var(--numfont);font-variant-numeric:tabular-nums;font-weight:800;font-size:.95vw;line-height:1.25;}
   .rec-txt .v small{font-size:.62vw;color:var(--muted);font-weight:600;margin-left:.3vw;}
   .rec-wk{font-size:.6vw;font-weight:800;color:#b9aeff;background:rgba(124,108,216,.16);border-radius:999px;padding:.15vh .5vw;white-space:nowrap;}
-
-  .comp-grid{display:flex;flex-direction:column;gap:1.1vh;flex:1;justify-content:center;}
-  .comp-row{display:flex;align-items:center;justify-content:space-between;gap:.8vw;}
-  .comp-row .l{font-size:.72vw;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
-  .comp-row .v{font-family:var(--numfont);font-variant-numeric:tabular-nums;font-weight:800;font-size:1.35vw;}
-  .comp-delta{font-size:.78vw;font-weight:800;border-radius:999px;padding:.25vh .7vw;white-space:nowrap;}
-  .comp-delta.up{color:var(--sage);background:rgba(63,174,106,.14);}
-  .comp-delta.down{color:#c1633f;background:rgba(193,99,63,.14);}
-  .comp-delta.flat{color:var(--muted);background:rgba(255,255,255,.06);}
 
   .hist-scroll{flex:1;min-height:0;overflow-y:auto;}
   table.hist-table{width:100%;border-collapse:collapse;font-size:.78vw;}
@@ -557,11 +549,9 @@
         <div class="hist-canvas"><canvas id="cvsHistVolumen"></canvas></div>
       </div>
 
-      <div class="hist-card hist-comp">
-        <div class="t">Semana actual vs. anteriores</div>
-        <div class="comp-grid" id="histComparativa">
-          <div class="act-empty">Cargando…</div>
-        </div>
+      <div class="hist-card hist-cumpl">
+        <div class="t">Cumplimiento (%) por semana</div>
+        <div class="hist-canvas"><canvas id="cvsCumplimiento"></canvas></div>
       </div>
 
       <div class="hist-card hist-records">
@@ -1011,6 +1001,7 @@ function pintarNaves(naves) {
    No requiere llamadas extra al backend.
    ============================================================ */
 let chartHistorico = null;
+let chartCumplimiento = null;
 let histAutocloseTimer = null;
 let histCuenta = 0;
 
@@ -1027,6 +1018,7 @@ function cerrarHistorico() {
   clearInterval(histAutocloseTimer);
   histAutocloseTimer = null;
   if (chartHistorico) { chartHistorico.destroy(); chartHistorico = null; }
+  if (chartCumplimiento) { chartCumplimiento.destroy(); chartCumplimiento = null; }
 }
 
 /* La TV no debe quedarse pegada en el histórico si alguien lo abre y se va.
@@ -1054,21 +1046,25 @@ function pintarHistorico() {
   if (!naves.length) {
     document.getElementById('histNavesBody').innerHTML =
       filaVacia(8, 'Sin naves cargadas. Se agregan desde Herramientas → Metas de nave.');
-    document.getElementById('histComparativa').innerHTML =
-      '<div class="act-empty">Sin datos para comparar.</div>';
     return;
   }
 
-  // ---- Agrupar por semana ----
+  // ---- Agrupar por semana (y por cliente dentro de cada semana, para
+  //      poder mostrar el reparto por cliente en las barras) ----
   const porSemana = {};
   naves.forEach(function (n) {
     const wk = Number(n.semana) || 0;
     if (!wk) return; // sin semana asignada no entra al histórico
-    if (!porSemana[wk]) porSemana[wk] = { semana: wk, consolidados: 0, meta: 0, naves: {}, filas: 0 };
+    if (!porSemana[wk]) porSemana[wk] = { semana: wk, consolidados: 0, meta: 0, naves: {}, filas: 0, porCliente: {} };
     porSemana[wk].consolidados += Number(n.consolidados) || 0;
     porSemana[wk].meta += Number(n.total) || 0;
     porSemana[wk].naves[n.nave] = true;
     porSemana[wk].filas++;   // cada fila es una combinación nave × cliente
+
+    const cli = n.cliente || 'Sin cliente';
+    if (!porSemana[wk].porCliente[cli]) porSemana[wk].porCliente[cli] = { consolidados: 0, meta: 0 };
+    porSemana[wk].porCliente[cli].consolidados += Number(n.consolidados) || 0;
+    porSemana[wk].porCliente[cli].meta += Number(n.total) || 0;
   });
 
   const semanas = Object.values(porSemana).sort(function (a, b) { return a.semana - b.semana; });
@@ -1077,30 +1073,36 @@ function pintarHistorico() {
   document.getElementById('histSubtitulo').textContent =
     semanas.length + ' semanas con naves asignadas · semana actual WK' + SEMANA_ACTUAL;
 
-  // ---- Gráfico por semana ----
+  // ---- Gráfico por semana: apilado por cliente, con el % de cada uno
+  //      dentro de su tramo y el total de la semana arriba de la barra ----
+  const clientesCons = Array.from(new Set(
+    ultimas.reduce(function (acc, s) { return acc.concat(Object.keys(s.porCliente)); }, [])
+  )).sort();
+
+  const datasetsConsolidados = clientesCons.map(function (cli) {
+    return {
+      label: cli,
+      stack: 'cons',
+      data: ultimas.map(function (s) { return (s.porCliente[cli] && s.porCliente[cli].consolidados) || 0; }),
+      backgroundColor: colorCliente(cli),
+      maxBarThickness: 44
+    };
+  }).concat([{
+    label: 'Meta',
+    stack: 'meta',
+    data: ultimas.map(function (s) { return s.meta; }),
+    backgroundColor: 'rgba(255,255,255,.10)',
+    borderRadius: 6, maxBarThickness: 44
+  }]);
+
   if (chartHistorico) chartHistorico.destroy();
   chartHistorico = new Chart(document.getElementById('cvsHistorico'), {
     type: 'bar',
     data: {
       labels: ultimas.map(function (s) { return 'WK' + s.semana; }),
-      datasets: [
-        {
-          label: 'Consolidados',
-          data: ultimas.map(function (s) { return s.consolidados; }),
-          backgroundColor: ultimas.map(function (s) {
-            return s.semana === SEMANA_ACTUAL ? '#e0a52c' : '#17a2a0';
-          }),
-          borderRadius: 6, maxBarThickness: 44
-        },
-        {
-          label: 'Meta',
-          data: ultimas.map(function (s) { return s.meta; }),
-          backgroundColor: 'rgba(255,255,255,.10)',
-          borderRadius: 6, maxBarThickness: 44
-        }
-      ]
+      datasets: datasetsConsolidados
     },
-    plugins: [etiquetasValores({ id: 'Cons', omitir: [1], tam: 12 })],
+    plugins: [etiquetasPorcentajeStack({ id: 'Cons', stack: 'cons' })],
     options: {
       maintainAspectRatio: false,
       layout: { padding: { top: 16 } },
@@ -1112,67 +1114,49 @@ function pintarHistorico() {
         tooltip: { enabled: true }
       },
       scales: {
-        y: { beginAtZero: true, ticks: { color: '#7f92a3', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.05)' } },
-        x: { ticks: { color: '#7f92a3', font: { size: 11 } }, grid: { display: false } }
+        y: { beginAtZero: true, stacked: true, ticks: { color: '#7f92a3', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.05)' } },
+        x: { stacked: true, ticks: { color: '#7f92a3', font: { size: 11 } }, grid: { display: false } }
       }
     }
   });
 
-  // ---- Comparativa: semana actual vs promedio de las anteriores ----
-  const actual = porSemana[SEMANA_ACTUAL] || { consolidados: 0, meta: 0, naves: {} };
-  const anteriores = semanas.filter(function (s) { return s.semana < SEMANA_ACTUAL; });
-
-  function promedio(campo) {
-    if (!anteriores.length) return 0;
-    const suma = anteriores.reduce(function (a, s) { return a + (s[campo] || 0); }, 0);
-    return suma / anteriores.length;
-  }
-
-  function delta(actualVal, promVal) {
-    if (!promVal) return { txt: '—', cls: 'flat' };
-    const pct = ((actualVal - promVal) / promVal) * 100;
-    const cls = pct > 2 ? 'up' : (pct < -2 ? 'down' : 'flat');
-    const signo = pct > 0 ? '+' : '';
-    return { txt: signo + pct.toFixed(0) + '%', cls: cls };
-  }
-
-  const promCons = promedio('consolidados');
-  const dCons = delta(actual.consolidados, promCons);
-  const cumplActual = actual.meta > 0 ? (actual.consolidados / actual.meta) * 100 : 0;
-  const cumplAnt = anteriores.length
-    ? anteriores.reduce(function (a, s) { return a + (s.meta > 0 ? (s.consolidados / s.meta) * 100 : 0); }, 0) / anteriores.length
-    : 0;
-  const dCumpl = delta(cumplActual, cumplAnt);
-
-  document.getElementById('histComparativa').innerHTML =
-    '<div class="comp-row">' +
-      '<span class="l">WK' + SEMANA_ACTUAL + ' consolidados</span>' +
-      '<span style="display:flex;align-items:center;gap:.6vw;">' +
-        '<span class="v">' + fmt(actual.consolidados) + '</span>' +
-        '<span class="comp-delta ' + dCons.cls + '">' + dCons.txt + '</span>' +
-      '</span>' +
-    '</div>' +
-    '<div class="comp-row">' +
-      '<span class="l">Promedio semanas anteriores</span>' +
-      '<span class="v" style="color:var(--muted);">' + fmt(promCons, 1) + '</span>' +
-    '</div>' +
-    '<div class="comp-row" style="border-top:1px solid var(--card-line);padding-top:1.1vh;">' +
-      '<span class="l">Cumplimiento WK' + SEMANA_ACTUAL + '</span>' +
-      '<span style="display:flex;align-items:center;gap:.6vw;">' +
-        '<span class="v">' + cumplActual.toFixed(0) + '%</span>' +
-        '<span class="comp-delta ' + dCumpl.cls + '">' + dCumpl.txt + '</span>' +
-      '</span>' +
-    '</div>' +
-    '<div class="comp-row">' +
-      '<span class="l">Cumplimiento promedio</span>' +
-      '<span class="v" style="color:var(--muted);">' + cumplAnt.toFixed(0) + '%</span>' +
-    '</div>' +
-    '<div class="comp-row">' +
-      '<span class="l">Naves en WK' + SEMANA_ACTUAL + '</span>' +
-      '<span class="v">' + Object.keys(actual.naves || {}).length +
-        '<small style="font-size:.62vw;color:var(--muted);font-weight:600;margin-left:.3vw;">' +
-        (actual.filas || 0) + ' cliente' + ((actual.filas || 0) === 1 ? '' : 's') + '</small></span>' +
-    '</div>';
+  // ---- Cumplimiento (%) por semana: reemplaza a la comparativa fija de
+  //      "semana actual vs. promedio" — muestra la misma idea (qué tan
+  //      cerca de la meta va cada semana) pero como tendencia continua. ----
+  if (chartCumplimiento) chartCumplimiento.destroy();
+  const cumplPorSemana = ultimas.map(function (s) {
+    return s.meta > 0 ? Math.round((s.consolidados / s.meta) * 1000) / 10 : 0;
+  });
+  chartCumplimiento = new Chart(document.getElementById('cvsCumplimiento'), {
+    type: 'line',
+    data: {
+      labels: ultimas.map(function (s) { return 'WK' + s.semana; }),
+      datasets: [{
+        data: cumplPorSemana,
+        borderColor: '#e0a52c',
+        backgroundColor: 'rgba(224,165,44,.14)',
+        fill: true,
+        tension: .3,
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointBorderWidth: 1.5,
+        pointBorderColor: '#101c2b',
+        pointBackgroundColor: ultimas.map(function (s) {
+          return s.semana === SEMANA_ACTUAL ? '#e0a52c' : '#7f92a3';
+        })
+      }]
+    },
+    plugins: [etiquetasValores({ id: 'Cumpl', tam: 11, formato: function (v) { return v + '%'; } })],
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: { top: 20 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: true } },
+      scales: {
+        y: { beginAtZero: true, ticks: { display: false }, grid: { color: 'rgba(255,255,255,.05)' } },
+        x: { ticks: { color: '#7f92a3', font: { size: 10 } }, grid: { display: false } }
+      }
+    }
+  });
 
   // ---- Bloques nuevos: volumen semanal y récords ----
   cargarDiasDestacados();
@@ -1321,9 +1305,8 @@ async function cargarDiasDestacados() {
       return NOMBRES[new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).getDay()];
     }
 
-    function fila(color, bg, icono, label, valor, chip) {
-      return '<div class="rec-row">' +
-        '<div class="rec-ic" style="background:' + bg + ';color:' + color + ';">' + icono + '</div>' +
+    function fila(color, label, valor, chip) {
+      return '<div class="rec-row" style="border-left-color:' + color + ';">' +
         '<div class="rec-txt">' +
           '<div class="l">' + label + '</div>' +
           '<div class="v">' + valor + '</div>' +
@@ -1333,23 +1316,23 @@ async function cargarDiasDestacados() {
     }
 
     cont.innerHTML =
-      fila('#17a2a0', 'rgba(23,162,160,.15)', '📦', 'Día con más consolidados',
+      fila('#17a2a0', 'Día con más consolidados',
            fmt(mejorDia.total) + '<small>contenedores</small>',
            fechaCorta(mejorDia.fecha)) +
       (mejorRecep
-        ? fila('#3fae6a', 'rgba(63,174,106,.15)', '🚚', 'Día con más recepciones',
+        ? fila('#3fae6a', 'Día con más recepciones',
                fmt(camionesPorDia[mejorRecep]) + '<small>camiones</small>',
                fechaCorta(mejorRecep))
         : '') +
       (mejorM3
-        ? fila('#e0a52c', 'rgba(224,165,44,.15)', '📐', 'Día con más volumen',
+        ? fila('#e0a52c', 'Día con más volumen',
                fmt(m3PorDia[mejorM3], 1) + '<small>m³ recibidos</small>',
                fechaCorta(mejorM3))
         : '') +
-      fila('#7c6cd8', 'rgba(124,108,216,.15)', '📊', 'Promedio por día activo',
+      fila('#7c6cd8', 'Promedio por día activo',
            promDiario.toFixed(1) + '<small>contenedores</small>', null) +
       (mejorDow !== null
-        ? fila('#d98cc4', 'rgba(217,140,196,.15)', '📅', 'Mejor día de la semana',
+        ? fila('#d98cc4', 'Mejor día de la semana',
                NOMBRES[mejorDow] + '<small>' + mejorProm.toFixed(1) + ' prom.</small>', null)
         : '');
   } catch (e) {
@@ -1396,6 +1379,63 @@ function etiquetasValores(opts) {
   };
 }
 
+/* Plugin para barras apiladas por cliente: dentro de cada tramo dibuja
+   qué % del total de esa barra representa (solo si el tramo es lo
+   bastante alto como para que el texto entre), y arriba de toda la
+   barra dibuja el total de la semana — igual que hacía antes
+   etiquetasValores con el valor absoluto, pero ahora sumando todos
+   los tramos del stack indicado. */
+function etiquetasPorcentajeStack(opts) {
+  var o = opts || {};
+  return {
+    id: 'pctStack' + (o.id || ''),
+    afterDatasetsDraw: function (chart) {
+      var ctx = chart.ctx;
+      var datasets = chart.data.datasets;
+      var incluidos = [];
+      datasets.forEach(function (ds, di) { if (ds.stack === o.stack) incluidos.push(di); });
+      if (!incluidos.length) return;
+
+      var totales = [];
+      incluidos.forEach(function (di) {
+        (datasets[di].data || []).forEach(function (v, i) { totales[i] = (totales[i] || 0) + (Number(v) || 0); });
+      });
+
+      incluidos.forEach(function (di) {
+        var meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach(function (bar, i) {
+          var v = Number(datasets[di].data[i]) || 0;
+          if (!v || !totales[i]) return;
+          var pct = Math.round((v / totales[i]) * 100);
+          var altoPx = Math.abs(bar.base - bar.y);
+          if (altoPx < 15) return; // tramo muy angosto: se omite (etiqueta selectiva)
+          ctx.save();
+          ctx.fillStyle = '#f2f6f9';
+          ctx.font = '800 10px "Segoe UI", Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(pct + '%', bar.x, (bar.y + bar.base) / 2);
+          ctx.restore();
+        });
+      });
+
+      // Total de la semana, arriba del tramo más alto del stack
+      var diTope = incluidos[incluidos.length - 1];
+      chart.getDatasetMeta(diTope).data.forEach(function (bar, i) {
+        if (!totales[i]) return;
+        ctx.save();
+        ctx.fillStyle = '#f2f6f9';
+        ctx.font = '800 12px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(fmt(totales[i], totales[i] % 1 !== 0 ? 1 : 0), bar.x, bar.y - 5);
+        ctx.restore();
+      });
+    }
+  };
+}
+
 function lunesDeSemanaISO(anio, semana) {
   const d = new Date(anio, 0, 4);
   const diaSem = d.getDay() || 7;
@@ -1422,36 +1462,45 @@ async function cargarVolumenSemanal(semanas) {
     }));
 
     const labels = objetivo.map(function (s) { return 'WK' + s.semana; });
-    const m3 = [], camiones = [];
+    const camiones = [];
+    // FIX: antes el bloque m³ usaba kpis.m3Movilizados, que suma
+    // Recepción + Consolidado + Reexpedición (tres flujos distintos) —
+    // comparado contra "camiones" (que solo cuenta Recepción), el
+    // promedio m³/camión salía inflado y no cuadraba con la realidad.
+    // Ahora las dos series salen del mismo dato (recepcionPorCliente),
+    // y además el m³ se reparte por cliente para mostrar el % de cada uno.
+    const porClienteM3 = {}; // cliente -> array paralelo a "objetivo"
+    const clientesVolSet = {};
 
-    resultados.forEach(function (r) {
-      if (!r || !r.ok) { m3.push(0); camiones.push(0); return; }
-      // FIX: antes esto usaba kpis.m3Movilizados, que suma Recepción +
-      // Consolidado + Reexpedición (tres flujos distintos) — comparado
-      // contra "camiones" (que solo cuenta Recepción), el promedio
-      // m³/camión salía inflado y no cuadraba con la realidad. Ahora
-      // las dos series salen del mismo dato (recepcionPorCliente), así
-      // que sí son comparables entre sí.
+    resultados.forEach(function (r, idx) {
+      if (!r || !r.ok) { camiones.push(0); return; }
       const rp = r.recepcionPorCliente || [];
-      m3.push(rp.reduce(function (a, c) { return a + (Number(c.m3) || 0); }, 0));
       camiones.push(rp.reduce(function (a, c) { return a + (Number(c.camiones) || 0); }, 0));
+      rp.forEach(function (c) {
+        const cli = c.cliente || 'Sin cliente';
+        clientesVolSet[cli] = true;
+        if (!porClienteM3[cli]) porClienteM3[cli] = new Array(objetivo.length).fill(0);
+        porClienteM3[cli][idx] += Number(c.m3) || 0;
+      });
     });
+
+    const clientesVol = Object.keys(clientesVolSet).sort();
+    const datasetsM3 = clientesVol.map(function (cli) {
+      return {
+        type: 'bar', label: cli, stack: 'm3',
+        data: porClienteM3[cli],
+        backgroundColor: colorCliente(cli),
+        maxBarThickness: 34,
+        yAxisID: 'y'
+      };
+    });
+    const idxCamiones = clientesVol.length;
 
     if (chartHistVolumen) chartHistVolumen.destroy();
     chartHistVolumen = new Chart(document.getElementById('cvsHistVolumen'), {
       data: {
         labels: labels,
-        datasets: [
-          {
-            type: 'bar',
-            label: 'm³ recibidos',
-            data: m3,
-            backgroundColor: objetivo.map(function (s) {
-              return s.semana === SEMANA_ACTUAL ? '#e0a52c' : 'rgba(63,174,106,.75)';
-            }),
-            borderRadius: 5, maxBarThickness: 34,
-            yAxisID: 'y'
-          },
+        datasets: datasetsM3.concat([
           {
             type: 'line',
             label: 'Camiones',
@@ -1464,15 +1513,18 @@ async function cargarVolumenSemanal(semanas) {
             tension: .3,
             yAxisID: 'y1'
           }
-        ]
+        ])
       },
-      plugins: [etiquetasValores({
-        id: 'Vol', tam: 10,
-        colores: { 0: '#dff5e8', 1: '#c9c0ff' },
-        formato: function (v, di) {
-          return di === 0 ? Math.round(v).toLocaleString('es-CL') : String(v);
-        }
-      })],
+      plugins: [
+        etiquetasPorcentajeStack({ id: 'Vol', stack: 'm3' }),
+        etiquetasValores({
+          id: 'VolCam',
+          omitir: clientesVol.map(function (_, i) { return i; }),
+          tam: 10,
+          colores: (function () { var o = {}; o[idxCamiones] = '#c9c0ff'; return o; })(),
+          formato: function (v) { return String(v); }
+        })
+      ],
       options: {
         maintainAspectRatio: false,
         layout: { padding: { top: 18 } },
@@ -1485,7 +1537,7 @@ async function cargarVolumenSemanal(semanas) {
         },
         scales: {
           y: {
-            beginAtZero: true, position: 'left',
+            beginAtZero: true, stacked: true, position: 'left',
             ticks: { color: '#3fae6a', font: { size: 9 } },
             grid: { color: 'rgba(255,255,255,.05)' }
           },
@@ -1494,7 +1546,7 @@ async function cargarVolumenSemanal(semanas) {
             ticks: { color: '#7c6cd8', font: { size: 9 }, precision: 0 },
             grid: { display: false }
           },
-          x: { ticks: { color: '#7f92a3', font: { size: 10 } }, grid: { display: false } }
+          x: { stacked: true, ticks: { color: '#7f92a3', font: { size: 10 } }, grid: { display: false } }
         }
       }
     });
