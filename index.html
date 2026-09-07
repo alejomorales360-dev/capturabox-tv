@@ -1582,16 +1582,23 @@ function etiquetasPorcentajeStack(opts) {
         });
       });
 
-      // Total de la semana, arriba del tramo más alto del stack
+      // Total de la semana (m³ entero, sin decimales) + camiones al lado
+      // (ej. "3.335 / 88"), arriba del tramo más alto del stack. Antes el
+      // número de camiones se dibujaba aparte, siguiendo al punto de la
+      // línea — como esa línea tiene su propia escala (eje derecho), el
+      // número terminaba flotando en cualquier altura y se cruzaba con
+      // las barras o con este mismo total. Ahora van juntos, en un solo
+      // texto fijo arriba de la columna.
       var diTope = incluidos[incluidos.length - 1];
       chart.getDatasetMeta(diTope).data.forEach(function (bar, i) {
         if (!totales[i]) return;
+        var texto = fmt(totales[i], 0) + (o.extra ? ' / ' + fmt(o.extra[i], 0) : '');
         ctx.save();
         ctx.fillStyle = '#f2f6f9';
         ctx.font = '800 12px "Segoe UI", Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(fmt(totales[i], totales[i] % 1 !== 0 ? 1 : 0), bar.x, bar.y - 5);
+        ctx.fillText(texto, bar.x, bar.y - 5);
         ctx.restore();
       });
     }
@@ -1656,8 +1663,6 @@ async function cargarVolumenSemanal(semanas) {
         yAxisID: 'y'
       };
     });
-    const idxCamiones = clientesVol.length;
-
     if (chartHistVolumen) chartHistVolumen.destroy();
     chartHistVolumen = new Chart(document.getElementById('cvsHistVolumen'), {
       data: {
@@ -1678,14 +1683,7 @@ async function cargarVolumenSemanal(semanas) {
         ])
       },
       plugins: [
-        etiquetasPorcentajeStack({ id: 'Vol', stack: 'm3' }),
-        etiquetasValores({
-          id: 'VolCam',
-          omitir: clientesVol.map(function (_, i) { return i; }),
-          tam: 10,
-          colores: (function () { var o = {}; o[idxCamiones] = '#c9c0ff'; return o; })(),
-          formato: function (v) { return String(v); }
-        })
+        etiquetasPorcentajeStack({ id: 'Vol', stack: 'm3', extra: camiones })
       ],
       options: {
         maintainAspectRatio: false,
