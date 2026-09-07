@@ -1501,6 +1501,83 @@ document.addEventListener('keydown', function (e) {
 
 actualizarTodo();
 setInterval(actualizarTodo, REFRESCO_DATOS_MS);
+
+/* =========================================================
+   ANTI-SUSPENSIÓN DE PANTALLA (TV)
+   La TV detecta "inactividad" (nadie toca el control, ni el mouse/
+   teclado si es un mini PC) y pasa a modo ahorro de energía, aunque
+   la página siga viva y actualizándose sola. Dos capas, de más a
+   menos soportada:
+
+   1) Screen Wake Lock API: le pide al navegador que le diga al
+      sistema operativo "no apagues la pantalla por inactividad
+      mientras esta pestaña esté visible". Es el mecanismo estándar
+      y el que hay que preferir — funciona en Chrome/Chromium/Edge/
+      Android (la mayoría de TV boxes y mini PCs con Chrome/Kiosk).
+      Se libera solo si la pestaña deja de estar visible, así que se
+      vuelve a pedir apenas vuelve a estarlo.
+
+   2) Respaldo para navegadores sin esa API (Safari viejo, algunos
+      Smart TV embebidos): un video invisible en loop generado al
+      vuelo desde un <canvas> (no depende de ningún archivo externo).
+      Es la técnica clásica de librerías como NoSleep.js — un video
+      reproduciéndose "convence" a muchos sistemas de que la pantalla
+      está en uso y no debe apagarse, aunque no sea tan confiable
+      como el Wake Lock real.
+
+   Ninguna de las dos puede pisar un "modo ahorro" que el TELEVISOR
+   mismo (no el navegador) aplique a nivel de hardware/firmware sin
+   que el sistema operativo se entere — para eso hay que revisar la
+   configuración de energía/protector de pantalla del TV.
+========================================================= */
+let _wakeLock = null;
+
+async function _pedirWakeLock() {
+  try {
+    if (!('wakeLock' in navigator)) {
+      console.warn('Wake Lock API no soportada en este navegador — queda solo el respaldo de video.');
+      return;
+    }
+    _wakeLock = await navigator.wakeLock.request('screen');
+    console.log('✅ Wake Lock activo: la pantalla no debería apagarse por inactividad.');
+    _wakeLock.addEventListener('release', function () {
+      console.log('Wake Lock liberado — se reintenta al volver a estar visible.');
+    });
+  } catch (err) {
+    console.warn('No se pudo activar Wake Lock:', err && err.message);
+  }
+}
+
+function _crearVideoAntiSuspension() {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const ctx = canvas.getContext('2d');
+    ctx.fillRect(0, 0, 2, 2);
+    const stream = canvas.captureStream ? canvas.captureStream(1) : null;
+    if (!stream) return;
+
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+    video.srcObject = stream;
+    document.body.appendChild(video);
+    video.play().catch(function (e) {
+      console.warn('No se pudo reproducir el video anti-suspensión:', e && e.message);
+    });
+  } catch (e) {
+    console.warn('No se pudo crear el video anti-suspensión:', e && e.message);
+  }
+}
+
+_pedirWakeLock();
+_crearVideoAntiSuspension();
+
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') _pedirWakeLock();
+});
 </script>
 </body>
 </html>
