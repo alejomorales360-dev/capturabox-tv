@@ -284,6 +284,12 @@
   }
   .hist-close:hover{background:rgba(255,255,255,.16);}
   .hist-autoclose{font-size:.66vw;color:var(--muted);margin-right:1vw;}
+  .hist-filtro{
+    cursor:pointer;background:rgba(255,255,255,.06);border:1px solid var(--card-line);
+    color:var(--ink);border-radius:.6vw;padding:.65vh 1vw;font-size:.78vw;font-weight:600;
+    margin-right:1vw;
+  }
+  .hist-filtro:focus{outline:1px solid var(--indigo);}
 
   .hist-body{flex:1;display:grid;grid-template-columns:1.15fr .95fr .9fr;grid-template-rows:auto auto 1fr;gap:1.2vh 1.2vw;min-height:0;}
   .hist-chart{grid-column:1;grid-row:1 / 3;}
@@ -571,6 +577,13 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;">
+        <select class="hist-filtro" id="histFiltroSemanas" onchange="pintarHistorico()">
+          <option value="4">Últimas 4 semanas</option>
+          <option value="8">Últimas 8 semanas</option>
+          <option value="12" selected>Últimas 12 semanas</option>
+          <option value="24">Últimos 6 meses</option>
+          <option value="todo">Todo el histórico</option>
+        </select>
         <span class="hist-autoclose" id="histAutoclose"></span>
         <button class="hist-close" onclick="cerrarHistorico()">✕ Volver al dashboard</button>
       </div>
@@ -1230,10 +1243,15 @@ function pintarHistorico() {
   });
 
   const semanas = Object.values(porSemana).sort(function (a, b) { return a.semana - b.semana; });
-  const ultimas = semanas.slice(-12); // últimas 12 semanas
+
+  // Filtro simple de período (semanas/meses) — sencillo y no invasivo:
+  // un solo select en el header, sin tocar el resto de la vista.
+  const filtroSel = document.getElementById('histFiltroSemanas');
+  const filtroVal = filtroSel ? filtroSel.value : '12';
+  const ultimas = filtroVal === 'todo' ? semanas : semanas.slice(-Number(filtroVal));
 
   document.getElementById('histSubtitulo').textContent =
-    semanas.length + ' semanas con naves asignadas · semana actual WK' + SEMANA_ACTUAL;
+    ultimas.length + ' de ' + semanas.length + ' semanas con naves asignadas · semana actual WK' + SEMANA_ACTUAL;
 
   // ---- Gráfico por semana: apilado por cliente, con el % de cada uno
   //      dentro de su tramo y el total de la semana arriba de la barra ----
@@ -1325,8 +1343,9 @@ function pintarHistorico() {
   cargarVolumenSemanal(ultimas);
 
   // ---- Tabla de naves por semana (más reciente primero) ----
+  const semanasFiltro = new Set(ultimas.map(function (s) { return s.semana; }));
   const filas = naves
-    .filter(function (n) { return Number(n.semana) > 0; })
+    .filter(function (n) { return Number(n.semana) > 0 && semanasFiltro.has(Number(n.semana)); })
     .sort(function (a, b) {
       if (b.semana !== a.semana) return b.semana - a.semana;
       return String(a.nave).localeCompare(String(b.nave));
@@ -1365,8 +1384,10 @@ function pintarHistorico() {
     ? 'El servidor no está enviando el campo <b>semana</b>.<br>' +
       'La URL del dashboard apunta a un despliegue antiguo de Apps Script.<br>' +
       'Vuelve a implementar y actualiza URL_GAS en este archivo.'
-    : 'Ninguna nave tiene semana asignada en Metas de nave.<br>' +
-      'Agrega el número de semana en Herramientas → Metas de nave.';
+    : (naves.some(function (n) { return Number(n.semana) > 0; })
+        ? 'Sin naves en el período seleccionado (' + (filtroSel ? filtroSel.selectedOptions[0].text.toLowerCase() : '') + ').'
+        : 'Ninguna nave tiene semana asignada en Metas de nave.<br>' +
+          'Agrega el número de semana en Herramientas → Metas de nave.');
 
   document.getElementById('histNavesBody').innerHTML =
     filas || filaVacia(8, msgVacio);
