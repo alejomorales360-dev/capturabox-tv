@@ -553,7 +553,7 @@
       </div>
 
       <div class="hist-card hist-vol">
-        <div class="t">Volumen m³ y camiones por semana</div>
+        <div class="t">Volumen recibido (m³) y camiones por semana</div>
         <div class="hist-canvas"><canvas id="cvsHistVolumen"></canvas></div>
       </div>
 
@@ -1426,8 +1426,14 @@ async function cargarVolumenSemanal(semanas) {
 
     resultados.forEach(function (r) {
       if (!r || !r.ok) { m3.push(0); camiones.push(0); return; }
-      m3.push(Number((r.kpis || {}).m3Movilizados) || 0);
+      // FIX: antes esto usaba kpis.m3Movilizados, que suma Recepción +
+      // Consolidado + Reexpedición (tres flujos distintos) — comparado
+      // contra "camiones" (que solo cuenta Recepción), el promedio
+      // m³/camión salía inflado y no cuadraba con la realidad. Ahora
+      // las dos series salen del mismo dato (recepcionPorCliente), así
+      // que sí son comparables entre sí.
       const rp = r.recepcionPorCliente || [];
+      m3.push(rp.reduce(function (a, c) { return a + (Number(c.m3) || 0); }, 0));
       camiones.push(rp.reduce(function (a, c) { return a + (Number(c.camiones) || 0); }, 0));
     });
 
@@ -1438,7 +1444,7 @@ async function cargarVolumenSemanal(semanas) {
         datasets: [
           {
             type: 'bar',
-            label: 'm³ movilizados',
+            label: 'm³ recibidos',
             data: m3,
             backgroundColor: objetivo.map(function (s) {
               return s.semana === SEMANA_ACTUAL ? '#e0a52c' : 'rgba(63,174,106,.75)';
