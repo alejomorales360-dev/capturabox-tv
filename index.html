@@ -490,8 +490,8 @@
           Últimos consolidados
         </div>
         <div class="table-scroll">
-        <table class="act-table"><thead><tr><th></th><th>Fecha</th><th>Contenedor</th><th>Cliente</th><th>Nave</th></tr></thead>
-          <tbody id="listConsolidados"><tr><td colspan="5" class="act-empty">Cargando…</td></tr></tbody>
+        <table class="act-table"><thead><tr><th></th><th>Fecha</th><th>Hora inicio</th><th>Contenedor</th><th>Cliente</th><th>Nave</th></tr></thead>
+          <tbody id="listConsolidados"><tr><td colspan="6" class="act-empty">Cargando…</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -588,7 +588,7 @@
   </div>
 
 <script>
-const URL_GAS = "https://script.google.com/macros/s/AKfycbzjKprtOE4AFivTC2hfCgEwH9pPY_YFPmKvnhuWHzdIL4uC-J1nbPIlgErsYLAsgt7A/exec";
+const URL_GAS = "https://script.google.com/macros/s/AKfycbzFVOxyYqlEO-jX3LSypaapt1tNNr6eIZgZVhTnFGTWnNmucL8j36hO_W23-qB5ko4/exec";
 
 const REFRESCO_DATOS_MS = 180 * 1000;
 let ultimaActualizacion = null;
@@ -907,24 +907,27 @@ function pintarConsolidados(detalle) {
     var filasCerradas = ultimos.map(function (d) {
       return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
         '<td>' + (d.fecha || '\u2014') + '</td>' +
+        '<td>' + (d.horaInicio || '\u2014') + '</td>' +
         '<td>' + (d.contenedor || '\u2014') + '</td><td>' + (d.cliente || '\u2014') + '</td><td>' + (d.nave || '\u2014') + '</td></tr>';
     });
 
     var filasParciales = (parciales || []).map(function (p) {
       return '<tr style="background:rgba(224,138,43,.08);"><td class="dotcell"><span class="rowdot" style="background:#e0a52c;"></span></td>' +
         '<td style="color:#e0a52c;">' + (p.fecha || '\u2014') + '</td>' +
+        '<td style="color:#e0a52c;">' + (p.horaInicio || '\u2014') + '</td>' +
         '<td style="color:#e0a52c;">' + (p.contenedor || '\u2014') + '</td><td>' + (p.cliente || '\u2014') + '</td>' +
         '<td style="color:#e0a52c;">' + (p.nave || '\u2014') + ' <span title="En proceso" style="margin-left:4px;">⏳</span></td></tr>';
     });
 
     var todas = filasParciales.concat(filasCerradas);
-    var html = !todas.length ? filaVacia(5, 'Sin consolidados registrados esta semana.') : todas.join('');
+    var html = !todas.length ? filaVacia(6, 'Sin consolidados registrados esta semana.') : todas.join('');
     pintarSiCambio('listConsolidados', 'consolidados', html);
   }).catch(function() {
-    var html = !ultimos.length ? filaVacia(5, 'Sin consolidados registrados esta semana.') :
+    var html = !ultimos.length ? filaVacia(6, 'Sin consolidados registrados esta semana.') :
       ultimos.map(function (d) {
         return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
           '<td>' + (d.fecha || '\u2014') + '</td>' +
+          '<td>' + (d.horaInicio || '\u2014') + '</td>' +
           '<td>' + (d.contenedor || '\u2014') + '</td><td>' + (d.cliente || '\u2014') + '</td><td>' + (d.nave || '\u2014') + '</td></tr>';
       }).join('');
     pintarSiCambio('listConsolidados', 'consolidados', html);
@@ -1501,6 +1504,83 @@ document.addEventListener('keydown', function (e) {
 
 actualizarTodo();
 setInterval(actualizarTodo, REFRESCO_DATOS_MS);
+
+/* =========================================================
+   ANTI-SUSPENSIÓN DE PANTALLA (TV)
+   La TV detecta "inactividad" (nadie toca el control, ni el mouse/
+   teclado si es un mini PC) y pasa a modo ahorro de energía, aunque
+   la página siga viva y actualizándose sola. Dos capas, de más a
+   menos soportada:
+
+   1) Screen Wake Lock API: le pide al navegador que le diga al
+      sistema operativo "no apagues la pantalla por inactividad
+      mientras esta pestaña esté visible". Es el mecanismo estándar
+      y el que hay que preferir — funciona en Chrome/Chromium/Edge/
+      Android (la mayoría de TV boxes y mini PCs con Chrome/Kiosk).
+      Se libera solo si la pestaña deja de estar visible, así que se
+      vuelve a pedir apenas vuelve a estarlo.
+
+   2) Respaldo para navegadores sin esa API (Safari viejo, algunos
+      Smart TV embebidos): un video invisible en loop generado al
+      vuelo desde un <canvas> (no depende de ningún archivo externo).
+      Es la técnica clásica de librerías como NoSleep.js — un video
+      reproduciéndose "convence" a muchos sistemas de que la pantalla
+      está en uso y no debe apagarse, aunque no sea tan confiable
+      como el Wake Lock real.
+
+   Ninguna de las dos puede pisar un "modo ahorro" que el TELEVISOR
+   mismo (no el navegador) aplique a nivel de hardware/firmware sin
+   que el sistema operativo se entere — para eso hay que revisar la
+   configuración de energía/protector de pantalla del TV.
+========================================================= */
+let _wakeLock = null;
+
+async function _pedirWakeLock() {
+  try {
+    if (!('wakeLock' in navigator)) {
+      console.warn('Wake Lock API no soportada en este navegador — queda solo el respaldo de video.');
+      return;
+    }
+    _wakeLock = await navigator.wakeLock.request('screen');
+    console.log('✅ Wake Lock activo: la pantalla no debería apagarse por inactividad.');
+    _wakeLock.addEventListener('release', function () {
+      console.log('Wake Lock liberado — se reintenta al volver a estar visible.');
+    });
+  } catch (err) {
+    console.warn('No se pudo activar Wake Lock:', err && err.message);
+  }
+}
+
+function _crearVideoAntiSuspension() {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const ctx = canvas.getContext('2d');
+    ctx.fillRect(0, 0, 2, 2);
+    const stream = canvas.captureStream ? canvas.captureStream(1) : null;
+    if (!stream) return;
+
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+    video.srcObject = stream;
+    document.body.appendChild(video);
+    video.play().catch(function (e) {
+      console.warn('No se pudo reproducir el video anti-suspensión:', e && e.message);
+    });
+  } catch (e) {
+    console.warn('No se pudo crear el video anti-suspensión:', e && e.message);
+  }
+}
+
+_pedirWakeLock();
+_crearVideoAntiSuspension();
+
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') _pedirWakeLock();
+});
 </script>
 </body>
 </html>
