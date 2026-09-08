@@ -315,6 +315,21 @@
     margin-right:1vw;
   }
   .hist-filtro:focus{outline:1px solid var(--indigo);}
+  /* El popup nativo del <select> no hereda el tema oscuro del resto de la
+     página — sin esto, Chromium lo pinta con texto claro sobre fondo
+     claro (casi ilegible). Fondo y texto explícitos por opción. */
+  .hist-filtro option{background:#101c2b;color:#f2f6f9;}
+  .hist-rango{
+    display:none;align-items:center;gap:.4vw;margin-right:1vw;
+    color:var(--muted);font-size:.72vw;
+  }
+  .hist-rango.show{display:flex;}
+  .hist-rango input{
+    width:3.2vw;background:rgba(255,255,255,.06);border:1px solid var(--card-line);
+    color:var(--ink);border-radius:.5vw;padding:.5vh .5vw;font-size:.78vw;text-align:center;
+    font-family:var(--numfont);
+  }
+  .hist-rango input:focus{outline:1px solid var(--indigo);}
 
   .hist-body{flex:1;display:grid;grid-template-columns:1.15fr .95fr .9fr;grid-template-rows:auto auto 1fr;gap:1.2vh 1.2vw;min-height:0;}
   .hist-chart{grid-column:1;grid-row:1 / 3;}
@@ -602,13 +617,23 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;">
-        <select class="hist-filtro" id="histFiltroSemanas" onchange="pintarHistorico()">
+        <select class="hist-filtro" id="histFiltroSemanas" onchange="histCambioFiltroSemanas_()">
+          <option value="1">Última semana</option>
+          <option value="2">Últimas 2 semanas</option>
+          <option value="3">Últimas 3 semanas</option>
           <option value="4">Últimas 4 semanas</option>
+          <option value="5">Últimas 5 semanas</option>
+          <option value="6">Últimas 6 semanas</option>
           <option value="8">Últimas 8 semanas</option>
           <option value="12" selected>Últimas 12 semanas</option>
           <option value="24">Últimos 6 meses</option>
           <option value="todo">Todo el histórico</option>
+          <option value="rango">Rango de semanas…</option>
         </select>
+        <span class="hist-rango" id="histRango">
+          desde <input type="number" id="histSemanaDesde" min="1" max="53" onchange="pintarHistorico()">
+          a <input type="number" id="histSemanaHasta" min="1" max="53" onchange="pintarHistorico()">
+        </span>
         <span class="hist-autoclose" id="histAutoclose"></span>
         <button class="hist-close" onclick="cerrarHistorico()">✕ Volver al dashboard</button>
       </div>
@@ -1747,6 +1772,24 @@ function iniciarAutocierre() {
   }, { passive: true });
 });
 
+/* Muestra/oculta los inputs "desde semana ?? a semana ??" según si se
+   eligió "Rango de semanas…" en el select, con valores por defecto
+   razonables la primera vez que se activa (para no dejarlos vacíos). */
+function histCambioFiltroSemanas_() {
+  const sel = document.getElementById('histFiltroSemanas');
+  const rango = document.getElementById('histRango');
+  const esRango = sel && sel.value === 'rango';
+  if (rango) rango.classList.toggle('show', esRango);
+
+  if (esRango) {
+    const desdeEl = document.getElementById('histSemanaDesde');
+    const hastaEl = document.getElementById('histSemanaHasta');
+    if (desdeEl && !desdeEl.value) desdeEl.value = Math.max(1, SEMANA_ACTUAL - 11);
+    if (hastaEl && !hastaEl.value) hastaEl.value = SEMANA_ACTUAL;
+  }
+  pintarHistorico();
+}
+
 function pintarHistorico() {
   const naves = navesCache || [];
 
@@ -1776,11 +1819,21 @@ function pintarHistorico() {
 
   const semanas = Object.values(porSemana).sort(function (a, b) { return a.semana - b.semana; });
 
-  // Filtro simple de período (semanas/meses) — sencillo y no invasivo:
-  // un solo select en el header, sin tocar el resto de la vista.
+  // Filtro de período (semanas/meses/rango) — un select en el header.
   const filtroSel = document.getElementById('histFiltroSemanas');
   const filtroVal = filtroSel ? filtroSel.value : '12';
-  const ultimas = filtroVal === 'todo' ? semanas : semanas.slice(-Number(filtroVal));
+  var ultimas;
+  if (filtroVal === 'todo') {
+    ultimas = semanas;
+  } else if (filtroVal === 'rango') {
+    const desdeEl = document.getElementById('histSemanaDesde');
+    const hastaEl = document.getElementById('histSemanaHasta');
+    const desdeWk = Number(desdeEl && desdeEl.value) || 0;
+    const hastaWk = Number(hastaEl && hastaEl.value) || 999;
+    ultimas = semanas.filter(function (s) { return s.semana >= Math.min(desdeWk, hastaWk) && s.semana <= Math.max(desdeWk, hastaWk); });
+  } else {
+    ultimas = semanas.slice(-Number(filtroVal));
+  }
 
   document.getElementById('histSubtitulo').textContent =
     ultimas.length + ' de ' + semanas.length + ' semanas con naves asignadas · semana actual WK' + SEMANA_ACTUAL;
