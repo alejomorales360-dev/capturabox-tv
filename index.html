@@ -198,6 +198,8 @@
   .sidebar-title .ic{color:var(--gold);font-size:1vw;}
   .nave-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:1vh;}
   .nave-card{background:rgba(255,255,255,.025);border:1px solid var(--card-line);border-radius:.6vw;padding:.9vh .9vw;}
+  .nave-card.clickable{cursor:pointer;transition:background .15s;}
+  .nave-card.clickable:hover{background:rgba(255,255,255,.06);}
   .nave-card-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.6vh;gap:.4vw;}
   .nave-card-name{font-size:.9vw;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
   .nave-card-tags{display:flex;align-items:center;gap:.35vw;flex-shrink:0;}
@@ -635,7 +637,7 @@
   </div>
 
 <script>
-const URL_GAS = "https://script.google.com/macros/s/AKfycbzjBc2iL6IKHAZlIrrzjXGZjc-M92IiTiBEYI-kn3noO2gDgWRn288T3tPcfcbpgHKY/exec";
+const URL_GAS = "https://script.google.com/macros/s/AKfycbxGvkJe3NUCd-5FWvNFgrVsNleiRX-ZHktazU9D9jN2rSlPr9-mB97X_c6LwjQmKq3W/exec";
 
 const REFRESCO_DATOS_MS = 180 * 1000;
 let ultimaActualizacion = null;
@@ -1343,6 +1345,65 @@ function mostrarDetalleResumenSemana() {
   mostrarOverlayDetalle_('📊 Resumen General — Semana', body);
 }
 
+/* Detalle al hacer clic en una tarjeta de "Naves de la semana". A
+   diferencia de las otras tarjetas, esto SÍ pide datos frescos al
+   servidor (informeConsolidado filtrado por nave, sin rango de fecha):
+   la tarjeta solo trae el conteo vs. meta, no el detalle por
+   contenedor, y una nave puede llevar varias semanas abierta. */
+async function mostrarDetalleNave(nave) {
+  const grupo = (window._navesPorNombre && window._navesPorNombre[nave]) || { clientes: [] };
+
+  const chipsMeta = grupo.clientes.length ? '<div class="dia-detalle-resumen">' +
+    grupo.clientes.map(function (c) {
+      return '<div class="dia-detalle-chip">' +
+        '<span class="dot" style="background:' + colorCliente(c.cliente || '') + ';"></span>' +
+        '<span class="nombre">' + (c.cliente || 'Sin cliente') + '</span>' +
+        '<span class="n">' + fmt(c.consolidados) + '</span>' +
+        '<span class="m3">/ ' + fmt(c.total) + ' meta</span>' +
+      '</div>';
+    }).join('') + '</div>' : '';
+
+  mostrarOverlayDetalle_('🚢 ' + nave, chipsMeta +
+    '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>');
+
+  try {
+    const data = await pedirJSON('informeConsolidado', { filtros: { nave: nave } });
+    const detalle = (data && data.ok && Array.isArray(data.detalle)) ? data.detalle : [];
+    // Más reciente primero (el detalle viene en el orden de la hoja, que es cronológico)
+    detalle.reverse();
+
+    const filasHtml = detalle.length ? detalle.map(function (d) {
+      return '<tr>' +
+        '<td>' + (d.fecha || '—') + '</td>' +
+        '<td>' + (d.horaInicio || '—') + '</td>' +
+        '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
+        '<td>' + (d.contenedor || '—') + '</td>' +
+        '<td>' + (d.sello || '—') + '</td>' +
+        '<td>' + (d.entrega || '—') + '</td>' +
+        '<td>' + (d.producto || '—') + '</td>' +
+      '</tr>';
+    }).join('') : '';
+
+    const notaSinDetalle = !detalle.length ?
+      '<div class="kpi-detalle-sub" style="color:var(--muted);text-transform:none;font-weight:600;">' +
+      'Sin contenedores con detalle disponible para esta nave (si ya se archivaron al histórico, el detalle línea por línea ya no queda accesible — solo el total que ves arriba).</div>'
+      : '';
+
+    const body = chipsMeta +
+      '<div class="dia-detalle-scroll">' +
+        notaSinDetalle +
+        (detalle.length ?
+          '<table class="act-table"><thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Contenedor</th><th>Sello</th><th>Entrega</th><th>Producto</th></tr></thead>' +
+          '<tbody>' + filasHtml + '</tbody></table>' : '') +
+      '</div>';
+
+    mostrarOverlayDetalle_('🚢 ' + nave, body);
+  } catch (e) {
+    mostrarOverlayDetalle_('🚢 ' + nave, chipsMeta +
+      '<div class="dia-detalle-scroll"><div class="act-empty">No se pudo cargar el detalle de esta nave.</div></div>');
+  }
+}
+
 function filaVacia(cols, texto) {
   return '<tr><td colspan="' + cols + '" class="act-empty">' + texto + '</td></tr>';
 }
@@ -1440,6 +1501,11 @@ function pintarNaves(naves) {
     '</div>';
   }
 
+  // Se guarda el agrupamiento para poder armar el modal de detalle al
+  // hacer clic (metas/consolidados/saldo por cliente ya calculados aquí,
+  // no hace falta recalcularlos al abrir el modal).
+  window._navesPorNombre = porNave;
+
   cont.innerHTML = Object.values(porNave).reverse().map(function (n) {
     // Chip de semana: WK33. Se resalta en dorado si es la semana en curso.
     var wk = n.semana
@@ -1449,7 +1515,7 @@ function pintarNaves(naves) {
     // distinguirse de las demás: barra lateral, borde y fondo tenue.
     var col = colorCliente(n.nave);
     var cardStyle = 'border-left:4px solid ' + col + ';background:' + hexToRgba_(col, .07) + ';border-color:' + hexToRgba_(col, .35) + ';';
-    return '<div class="nave-card" style="' + cardStyle + '">' +
+    return '<div class="nave-card clickable" data-nave="' + n.nave + '" style="' + cardStyle + '">' +
       '<div class="nave-card-top">' +
         '<span class="nave-card-name">' +
           '<span style="display:inline-block;width:.55vw;height:.55vw;min-width:6px;min-height:6px;border-radius:50%;background:' + col + ';margin-right:.4vw;vertical-align:middle;"></span>' +
@@ -1462,6 +1528,14 @@ function pintarNaves(naves) {
       n.clientes.map(filaCliente).join('') +
     '</div>';
   }).join('');
+
+  if (!cont._clickBound) {
+    cont.addEventListener('click', function (e) {
+      var card = e.target.closest('.nave-card');
+      if (card && card.dataset.nave) mostrarDetalleNave(card.dataset.nave);
+    });
+    cont._clickBound = true;
+  }
 }
 
 /* ============================================================
