@@ -266,7 +266,6 @@
   .dia-detalle-scroll table.act-table tfoot td{padding-top:.8vh;}
   .kpi-detalle-sub{font-size:.85vw;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin:1.8vh 0 .8vh;}
   .kpi-detalle-sub:first-child{margin-top:0;}
-  .kpi-detalle-nota{padding:0 1.6vw;font-size:.78vw;color:var(--muted);line-height:1.5;}
 
   /* ============================================================
      VISTA HISTÓRICA (capa completa sobre el dashboard)
@@ -485,7 +484,7 @@
         <div class="t">Contenedores consolidados — esta semana (lun–sáb)</div>
         <div class="canvas-wrap"><canvas id="cvsTendencia"></canvas></div>
       </div>
-      <div class="card">
+      <div class="card clickable" onclick="mostrarDetalleResumenSemana()">
         <div class="t">Resumen general — semana</div>
         <div class="resumen-row">
           <div class="resumen-item">
@@ -819,6 +818,7 @@ async function actualizarTodo() {
     // guarda lo mismo que ya se pide siempre para pintar el dashboard, sin
     // llamadas extra al servidor.
     if (dataHoy && dataHoy.ok) window._kpiDataHoy = dataHoy;
+    if (dataSemana && dataSemana.ok) window._kpiDataSemana = dataSemana;
     if (dataRecepcion && dataRecepcion.ok) window._kpiDetalleRecepcionSemana = dataRecepcion.detalle || [];
     if (dataConsolidado && dataConsolidado.ok) window._kpiDetalleConsolidadoSemana = dataConsolidado.detalle || [];
 
@@ -1280,7 +1280,6 @@ function mostrarDetalleBodega() {
   }).join('') : filaVacia(4, 'Sin stock vigente.');
 
   const body =
-    '<div class="kpi-detalle-nota">Nota: el m² por cliente aún no se registra por lote — hoy solo se controla la capacidad total de la bodega en m² y m³ (ver pie de esta tabla).</div>' +
     '<div class="dia-detalle-scroll"><table class="act-table">' +
       '<thead><tr><th>Cliente</th><th>m³</th><th>Lotes</th><th>% ocupación</th></tr></thead>' +
       '<tbody>' + filasHtml + '</tbody>' +
@@ -1291,6 +1290,57 @@ function mostrarDetalleBodega() {
     '</table></div>';
 
   mostrarOverlayDetalle_('🏬 Ocupación de Bodega por Cliente', body);
+}
+
+function mostrarDetalleResumenSemana() {
+  const d = window._kpiDataSemana || {};
+  const cons = d.consolidadoPorCliente || [];
+  const rec = d.recepcionPorCliente || [];
+  const reex = d.reexpedicionPorCliente || [];
+
+  const acc = {};
+  function sumar(arr, campoOrigenN, campoDestinoN, campoDestinoM3) {
+    arr.forEach(function (c) {
+      const k = c.cliente || 'Sin cliente';
+      if (!acc[k]) acc[k] = { cliente: k, conCont: 0, conM3: 0, recCam: 0, recM3: 0, reexM3: 0 };
+      if (campoDestinoN) acc[k][campoDestinoN] += Number(c[campoOrigenN]) || 0;
+      acc[k][campoDestinoM3] += Number(c.m3) || 0;
+    });
+  }
+  sumar(cons, 'contenedores', 'conCont', 'conM3');
+  sumar(rec, 'camiones', 'recCam', 'recM3');
+  sumar(reex, null, null, 'reexM3');
+
+  const filas = Object.keys(acc).map(function (k) { return acc[k]; })
+    .sort(function (a, b) { return (b.conM3 + b.recM3 + b.reexM3) - (a.conM3 + a.recM3 + a.reexM3); });
+
+  const sumaCol = function (campo) { return filas.reduce(function (s, c) { return s + c[campo]; }, 0); };
+  const totalGeneral = sumaCol('conM3') + sumaCol('recM3') + sumaCol('reexM3');
+
+  const filasHtml = filas.length ? filas.map(function (c) {
+    const total = c.conM3 + c.recM3 + c.reexM3;
+    return '<tr>' +
+      '<td style="color:' + colorCliente(c.cliente) + ';font-weight:700;">' + c.cliente + '</td>' +
+      '<td>' + fmt(c.conCont) + '</td>' +
+      '<td>' + fmt(c.conM3, 1) + '</td>' +
+      '<td>' + fmt(c.recCam) + '</td>' +
+      '<td>' + fmt(c.recM3, 1) + '</td>' +
+      '<td>' + fmt(c.reexM3, 1) + '</td>' +
+      '<td style="font-weight:800;">' + fmt(total, 1) + '</td>' +
+    '</tr>';
+  }).join('') : filaVacia(7, 'Sin movimiento esta semana.');
+
+  const body = '<div class="dia-detalle-scroll"><table class="act-table">' +
+    '<thead><tr><th>Cliente</th><th>Contenedores</th><th>Consolidado m³</th><th>Camiones</th><th>Recepción m³</th><th>Reexpedición m³</th><th>Total m³</th></tr></thead>' +
+    '<tbody>' + filasHtml + '</tbody>' +
+    '<tfoot><tr style="font-weight:800;border-top:1px solid rgba(255,255,255,.15);">' +
+      '<td>TOTAL</td><td>' + fmt(sumaCol('conCont')) + '</td><td>' + fmt(sumaCol('conM3'), 1) + '</td>' +
+      '<td>' + fmt(sumaCol('recCam')) + '</td><td>' + fmt(sumaCol('recM3'), 1) + '</td>' +
+      '<td>' + fmt(sumaCol('reexM3'), 1) + '</td><td>' + fmt(totalGeneral, 1) + '</td>' +
+    '</tr></tfoot>' +
+  '</table></div>';
+
+  mostrarOverlayDetalle_('📊 Resumen General — Semana', body);
 }
 
 function filaVacia(cols, texto) {
