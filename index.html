@@ -331,12 +331,13 @@
   }
   .hist-rango input:focus{outline:1px solid var(--indigo);}
 
-  .hist-body{flex:1;display:grid;grid-template-columns:1.15fr .95fr .9fr;grid-template-rows:auto auto 1fr;gap:1.2vh 1.2vw;min-height:0;}
+  .hist-body{flex:1;display:grid;grid-template-columns:1.15fr .95fr .9fr;grid-template-rows:auto auto auto 1fr;gap:1.2vh 1.2vw;min-height:0;}
   .hist-chart{grid-column:1;grid-row:1 / 3;}
   .hist-vol{grid-column:2;grid-row:1 / 3;}
   .hist-cumpl{grid-column:3;grid-row:1;}
   .hist-records{grid-column:3;grid-row:2;}
-  .hist-naves{grid-column:1 / -1;grid-row:3;min-height:0;}
+  .hist-ocupacion{grid-column:1 / -1;grid-row:3;}
+  .hist-naves{grid-column:1 / -1;grid-row:4;min-height:0;}
   .hist-card{background:var(--card);border:1px solid var(--card-line);border-radius:.9vw;padding:1.3vh 1.4vw;display:flex;flex-direction:column;min-height:0;}
   .hist-card .t{font-size:.78vw;letter-spacing:.05em;text-transform:uppercase;font-weight:600;margin-bottom:1vh;color:var(--teal);flex-shrink:0;}
   .hist-vol .t{color:var(--sage);}
@@ -662,6 +663,11 @@
         </div>
       </div>
 
+      <div class="hist-card hist-ocupacion">
+        <div class="t">Ocupación de bodega (m³) · histórico diario <span id="histOcupacionResumen" style="text-transform:none;font-weight:400;color:#7f92a3;"></span></div>
+        <div class="hist-canvas"><canvas id="cvsHistOcupacion"></canvas></div>
+      </div>
+
       <div class="hist-card hist-naves">
         <div class="t">Naves por semana · cumplimiento</div>
         <div class="hist-scroll">
@@ -679,7 +685,7 @@
   </div>
 
 <script>
-const URL_GAS = "https://script.google.com/macros/s/AKfycbylsOnv8zsQ33l3I7wfzQgOlIMOa6GkLGcPgv45f6013kYlZi4Q_Zm1o7V69HpjGfTt/exec";
+const URL_GAS = "https://script.google.com/macros/s/AKfycbzkzhSBSEtOdJSv_jfcrbds9uEtjIH9pINHLTKL1YwZokzDtInDX8sv3G2z7P9CYgaM/exec";
 
 const REFRESCO_DATOS_MS = 180 * 1000;
 let ultimaActualizacion = null;
@@ -1750,6 +1756,7 @@ function pintarNaves(naves) {
    ============================================================ */
 let chartHistorico = null;
 let chartCumplimiento = null;
+let chartHistOcupacion = null;
 let histAutocloseTimer = null;
 let histCuenta = 0;
 
@@ -1767,6 +1774,7 @@ function cerrarHistorico() {
   histAutocloseTimer = null;
   if (chartHistorico) { chartHistorico.destroy(); chartHistorico = null; }
   if (chartCumplimiento) { chartCumplimiento.destroy(); chartCumplimiento = null; }
+  if (chartHistOcupacion) { chartHistOcupacion.destroy(); chartHistOcupacion = null; }
   // Fuerza un repintado completo la próxima vez que se abra (si no, el
   // "no cambió nada" de pintarHistorico() lo dejaría con los gráficos
   // recién destruidos y el canvas en blanco).
@@ -1958,6 +1966,7 @@ function pintarHistorico() {
   // ---- Bloques nuevos: volumen semanal y récords ----
   cargarDiasDestacados();
   cargarVolumenSemanal(ultimas);
+  cargarOcupacionHistorica();
 
   // ---- Tabla de naves por semana (más reciente primero) ----
   const semanasFiltro = new Set(ultimas.map(function (s) { return s.semana; }));
@@ -2366,6 +2375,110 @@ async function cargarVolumenSemanal(semanas) {
     });
   } catch (e) {
     console.error('Error cargando volumen semanal:', e);
+  }
+}
+
+/* =========================================================
+   OCUPACIÓN DE BODEGA — HISTÓRICO DIARIO
+   Muestra la tendencia de m³ ocupados día a día (guardados por el
+   trigger diario del backend), para ver cuándo subió y cuándo
+   estuvo baja la ocupación. Independiente del filtro de semanas de
+   arriba: siempre trae los últimos 60 días con snapshot guardado.
+========================================================= */
+let _ocupacionToken = 0;
+async function cargarOcupacionHistorica() {
+  const miToken = ++_ocupacionToken;
+  const resumen = document.getElementById('histOcupacionResumen');
+
+  try {
+    const r = await pedirJSON('historicoOcupacionBodega', { dias: 60 });
+    if (miToken !== _ocupacionToken) return; // respuesta vieja, descartar
+
+    const items = (r && r.ok && Array.isArray(r.items)) ? r.items : [];
+    if (chartHistOcupacion) { chartHistOcupacion.destroy(); chartHistOcupacion = null; }
+
+    if (!items.length) {
+      if (resumen) resumen.textContent = '· sin snapshots guardados aún';
+      return;
+    }
+
+    if (resumen) {
+      const max = r.maxItem, min = r.minItem;
+      const fmtDia = function (f) { return new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }); };
+      resumen.textContent = max && min
+        ? '· máx ' + fmt(max.totalVolumen, 0) + ' m³ (' + max.pctOcupacion.toFixed(0) + '%) el ' + fmtDia(max.fecha) +
+          '  ·  mín ' + fmt(min.totalVolumen, 0) + ' m³ (' + min.pctOcupacion.toFixed(0) + '%) el ' + fmtDia(min.fecha)
+        : '';
+    }
+
+    const labels = items.map(function (it) { return new Date(it.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }); });
+    const maxFecha = r.maxItem ? r.maxItem.fecha : null;
+    const minFecha = r.minItem ? r.minItem.fecha : null;
+
+    chartHistOcupacion = new Chart(document.getElementById('cvsHistOcupacion'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'm³ ocupados',
+          data: items.map(function (it) { return it.totalVolumen; }),
+          borderColor: '#17a2a0',
+          backgroundColor: 'rgba(23,162,160,.14)',
+          fill: true,
+          tension: .25,
+          borderWidth: 2.5,
+          pointRadius: items.map(function (it) { return (it.fecha === maxFecha || it.fecha === minFecha) ? 5 : 2; }),
+          pointBackgroundColor: items.map(function (it) {
+            return it.fecha === maxFecha ? '#3fae6a' : (it.fecha === minFecha ? '#e0546a' : '#17a2a0');
+          }),
+          pointBorderColor: '#101c2b',
+          pointBorderWidth: 1.5,
+          yAxisID: 'y'
+        }, {
+          label: '% ocupación',
+          data: items.map(function (it) { return it.pctOcupacion; }),
+          borderColor: '#e0a52c',
+          borderDash: [4, 3],
+          borderWidth: 1.75,
+          pointRadius: 0,
+          fill: false,
+          tension: .25,
+          yAxisID: 'y1'
+        }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        layout: { padding: { top: 10 } },
+        plugins: {
+          legend: { display: true, position: 'top', labels: { color: '#7f92a3', boxWidth: 10, font: { size: 10 } } },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function (ctx) {
+                return ctx.dataset.yAxisID === 'y1'
+                  ? '% ocupación: ' + ctx.parsed.y.toFixed(1) + '%'
+                  : 'm³ ocupados: ' + fmt(ctx.parsed.y, 0);
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true, position: 'left',
+            ticks: { color: '#17a2a0', font: { size: 9 } },
+            grid: { color: 'rgba(255,255,255,.05)' }
+          },
+          y1: {
+            beginAtZero: true, position: 'right', min: 0, max: 100,
+            ticks: { color: '#e0a52c', font: { size: 9 }, callback: function (v) { return v + '%'; } },
+            grid: { display: false }
+          },
+          x: { ticks: { color: '#7f92a3', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 15 }, grid: { display: false } }
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Error cargando ocupación histórica:', e);
   }
 }
 
