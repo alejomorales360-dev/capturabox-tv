@@ -621,11 +621,11 @@
           <option value="1">Última semana</option>
           <option value="2">Últimas 2 semanas</option>
           <option value="3">Últimas 3 semanas</option>
-          <option value="4">Últimas 4 semanas</option>
+          <option value="4" selected>Últimas 4 semanas</option>
           <option value="5">Últimas 5 semanas</option>
           <option value="6">Últimas 6 semanas</option>
           <option value="8">Últimas 8 semanas</option>
-          <option value="12" selected>Últimas 12 semanas</option>
+          <option value="12">Últimas 12 semanas</option>
           <option value="24">Últimos 6 meses</option>
           <option value="todo">Todo el histórico</option>
           <option value="rango">Rango de semanas…</option>
@@ -1751,6 +1751,10 @@ function cerrarHistorico() {
   histAutocloseTimer = null;
   if (chartHistorico) { chartHistorico.destroy(); chartHistorico = null; }
   if (chartCumplimiento) { chartCumplimiento.destroy(); chartCumplimiento = null; }
+  // Fuerza un repintado completo la próxima vez que se abra (si no, el
+  // "no cambió nada" de pintarHistorico() lo dejaría con los gráficos
+  // recién destruidos y el canvas en blanco).
+  ultimoSnapshot.historico = null;
 }
 
 /* La TV no debe quedarse pegada en el histórico si alguien lo abre y se va.
@@ -1799,6 +1803,18 @@ function pintarHistorico() {
     return;
   }
 
+  // FIX: el refresco automático (cada REFRESCO_DATOS_MS) llama a esto de
+  // nuevo mientras el histórico sigue abierto, aunque nada haya cambiado
+  // — antes eso destruía y recreaba los 3 gráficos igual, con el "flash"
+  // de reinicio que se veía cada tres minutos aunque los datos fueran
+  // idénticos. Si ni las naves ni el filtro cambiaron desde la última
+  // vez, no se vuelve a pintar nada.
+  const _selHist = document.getElementById('histFiltroSemanas');
+  const _firmaHist = JSON.stringify(naves) + '|' + (_selHist ? _selHist.value : '') + '|' +
+    (document.getElementById('histSemanaDesde') || {}).value + '|' + (document.getElementById('histSemanaHasta') || {}).value;
+  if (ultimoSnapshot.historico === _firmaHist) return;
+  ultimoSnapshot.historico = _firmaHist;
+
   // ---- Agrupar por semana (y por cliente dentro de cada semana, para
   //      poder mostrar el reparto por cliente en las barras) ----
   const porSemana = {};
@@ -1821,7 +1837,7 @@ function pintarHistorico() {
 
   // Filtro de período (semanas/meses/rango) — un select en el header.
   const filtroSel = document.getElementById('histFiltroSemanas');
-  const filtroVal = filtroSel ? filtroSel.value : '12';
+  const filtroVal = filtroSel ? filtroSel.value : '4';
   var ultimas;
   if (filtroVal === 'todo') {
     ultimas = semanas;
@@ -2220,7 +2236,19 @@ function lunesDeSemanaISO(anio, semana) {
   return d;
 }
 
+// FIX: cada apertura/refresco del histórico (el refresco automático cada
+// REFRESCO_DATOS_MS llama a pintarHistorico() -> cargarVolumenSemanal()
+// de nuevo mientras la vista sigue abierta) dispara una tanda nueva de
+// llamadas a dashboardEjecutivo por cada semana. Como son requests HTTP
+// en paralelo, no hay garantía de que la tanda MÁS VIEJA termine antes
+// que la más nueva — si llega después, pisaba el gráfico ya actualizado
+// con datos de un filtro/momento anterior (el "desface" reportado: el
+// gráfico de camiones mostraba más semanas de las que el filtro pedía).
+// Con este token, solo la tanda más reciente puede pintar el gráfico.
+let _volSemanalToken = 0;
+
 async function cargarVolumenSemanal(semanas) {
+  const miToken = ++_volSemanalToken;
   const anio = new Date().getFullYear();
   // Máximo 8 semanas para no saturar Apps Script con consultas
   const objetivo = semanas.slice(-8);
@@ -2235,6 +2263,10 @@ async function cargarVolumenSemanal(semanas) {
         fechaHasta: fechaISO(domingo)
       }).catch(function () { return null; });
     }));
+
+    // Llegó una tanda más nueva mientras esta esperaba red: descartar
+    // esta respuesta, ya vieja, sin pintar nada con ella.
+    if (miToken !== _volSemanalToken) return;
 
     const labels = objetivo.map(function (s) { return 'WK' + s.semana; });
     const camiones = [];
