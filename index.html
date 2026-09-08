@@ -1099,7 +1099,7 @@ function _fechaHoyCl_() {
   return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
 }
 
-function mostrarOverlayDetalle_(titulo, bodyHtml) {
+function mostrarOverlayDetalle_(titulo, bodyHtml, extraHeaderHtml) {
   let el = document.getElementById('kpiDetalleOverlay');
   if (!el) {
     el = document.createElement('div');
@@ -1111,7 +1111,10 @@ function mostrarOverlayDetalle_(titulo, bodyHtml) {
   el.innerHTML =
     '<div class="dia-detalle-card">' +
       '<div class="dia-detalle-head">' +
-        '<div class="dia-detalle-titulo">' + titulo + '</div>' +
+        '<div style="display:flex;align-items:center;gap:1.6vw;min-width:0;">' +
+          '<div class="dia-detalle-titulo">' + titulo + '</div>' +
+          (extraHeaderHtml || '') +
+        '</div>' +
         '<button class="dia-detalle-cerrar" onclick="cerrarOverlayDetalle_()">✕</button>' +
       '</div>' +
       bodyHtml +
@@ -1438,8 +1441,24 @@ async function mostrarDetalleNave(nave) {
    para traer los contenedores de todas las naves de esa semana en una
    sola tabla (con columna Nave para distinguirlas). */
 async function mostrarDetalleSemanaNaves(wk) {
-  const grupo = (window._navesPorSemana && window._navesPorSemana[wk]) || { naves: [] };
+  const grupo = (window._navesPorSemana && window._navesPorSemana[wk]) || { naves: [], totalCons: 0, totalMeta: 0 };
   const titulo = '📅 Semana WK' + wk + ' · Todas las naves';
+
+  // Total de la semana (todas las naves y clientes juntos), arriba junto
+  // al título — ya venía calculado desde pintarNaves(), no hay que
+  // recalcularlo.
+  function statBox(valor, etiqueta, dorado) {
+    return '<div style="text-align:center;">' +
+      '<div style="font-family:var(--numfont);font-variant-numeric:tabular-nums;font-weight:800;font-size:1vw;' + (dorado ? 'color:var(--gold);' : '') + '">' + fmt(valor) + '</div>' +
+      '<div style="font-size:.6vw;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;">' + etiqueta + '</div>' +
+    '</div>';
+  }
+  const saldoSemana = Math.max(0, (grupo.totalMeta || 0) - (grupo.totalCons || 0));
+  const totalHeaderHtml = '<div style="display:flex;gap:1.2vw;align-items:center;">' +
+    statBox(grupo.totalCons || 0, 'Consolidados') +
+    statBox(grupo.totalMeta || 0, 'Meta') +
+    statBox(saldoSemana, 'Saldo', true) +
+  '</div>';
 
   const chipsNaves = grupo.naves.length ? '<div class="dia-detalle-resumen">' +
     grupo.naves.map(function (n) {
@@ -1454,7 +1473,7 @@ async function mostrarDetalleSemanaNaves(wk) {
     }).join('') + '</div>' : '';
 
   mostrarOverlayDetalle_(titulo, chipsNaves +
-    '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>');
+    '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>', totalHeaderHtml);
 
   try {
     // FIX: antes se pedía por rango de fechas (lunes-domingo de la
@@ -1504,10 +1523,10 @@ async function mostrarDetalleSemanaNaves(wk) {
           '</table>' : '') +
       '</div>';
 
-    mostrarOverlayDetalle_(titulo, body);
+    mostrarOverlayDetalle_(titulo, body, totalHeaderHtml);
   } catch (e) {
     mostrarOverlayDetalle_(titulo, chipsNaves +
-      '<div class="dia-detalle-scroll"><div class="act-empty">No se pudo cargar el detalle de esta semana.</div></div>');
+      '<div class="dia-detalle-scroll"><div class="act-empty">No se pudo cargar el detalle de esta semana.</div></div>', totalHeaderHtml);
   }
 }
 
