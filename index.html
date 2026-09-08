@@ -580,8 +580,8 @@
           Últimos lotes preparados
         </div>
         <div class="table-scroll">
-        <table class="act-table"><thead><tr><th></th><th>Lote</th><th>Cliente</th><th>Ubicación</th><th>m³</th></tr></thead>
-          <tbody id="listPreparados"><tr><td colspan="5" class="act-empty">Cargando…</td></tr></tbody>
+        <table class="act-table"><thead><tr><th></th><th>Lote</th><th>Cliente</th><th>Ubicación</th><th>m³</th><th>Servicio</th></tr></thead>
+          <tbody id="listPreparados"><tr><td colspan="6" class="act-empty">Cargando…</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -1607,12 +1607,28 @@ function pintarConsolidados(detalle) {
 }
 
 function pintarPreparados(items) {
-  const html = !items.length ? filaVacia(5, 'Sin lotes preparados registrados.') :
-    items.map(function (p) {
+  // Los lotes con servicio adicional (Refrigerador, Rearmado, Revisi\u00f3n
+  // SAG, etc. \u2014 se cargan/preparan aparte, no en la l\u00ednea normal) quedan
+  // siempre arriba de los dem\u00e1s, para que no se pierdan entre los lotes
+  // reci\u00e9n agregados. Dentro de cada grupo se conserva el orden original
+  // (m\u00e1s reciente primero).
+  const conServicio = items.filter(function (p) { return p.servicios && p.servicios.length; });
+  const sinServicio = items.filter(function (p) { return !p.servicios || !p.servicios.length; });
+  const ordenados = conServicio.concat(sinServicio);
+
+  const html = !ordenados.length ? filaVacia(6, 'Sin lotes preparados registrados.') :
+    ordenados.map(function (p) {
       const m3 = (p.m3 != null ? p.m3 : (p.volumen != null ? p.volumen : null));
-      return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
+      const tieneServicio = p.servicios && p.servicios.length;
+      const colorDot = tieneServicio ? '#e0a52c' : '#3fae6a';
+      const filaEstilo = tieneServicio ? ' style="background:rgba(224,165,44,.08);"' : '';
+      const servicioTxt = tieneServicio
+        ? '<span style="color:#e0a52c;font-weight:700;">' + p.servicios.join(' + ') + '</span>'
+        : '<span style="color:var(--muted);">\u2014</span>';
+      return '<tr' + filaEstilo + '><td class="dotcell"><span class="rowdot" style="background:' + colorDot + ';"></span></td>' +
         '<td>' + (p.lote || '\u2014') + '</td><td>' + (p.cliente || '\u2014') + '</td><td>' + (p.ubicacion || '\u2014') + '</td>' +
-        '<td>' + (m3 != null ? Number(m3).toFixed(1) : '\u2014') + '</td></tr>';
+        '<td>' + (m3 != null ? Number(m3).toFixed(1) : '\u2014') + '</td>' +
+        '<td>' + servicioTxt + '</td></tr>';
     }).join('');
   pintarSiCambio('listPreparados', 'preparados', html);
 }
