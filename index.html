@@ -1457,20 +1457,27 @@ async function mostrarDetalleSemanaNaves(wk) {
     '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>');
 
   try {
-    const anio = new Date().getFullYear();
-    const lunes = lunesDeSemanaISO(anio, wk);
-    const domingo = new Date(lunes); domingo.setDate(domingo.getDate() + 6);
-    const data = await pedirJSON('informeConsolidado', {
-      filtros: { fechaDesde: fechaISO(lunes), fechaHasta: fechaISO(domingo) }
+    // FIX: antes se pedía por rango de fechas (lunes-domingo de la
+    // semana), pero eso trae CUALQUIER contenedor consolidado en esos
+    // días, sea o no de una nave programada para esta semana — una nave
+    // de otra semana que por calendario cae en el mismo rango se colaba
+    // igual. Ahora se pide por cada nave programada de esta semana
+    // (mismo filtro que usa el detalle de una nave individual), sin
+    // importar cuándo se haya consolidado.
+    const respuestas = await Promise.all(grupo.naves.map(function (n) {
+      return pedirJSON('informeConsolidado', { filtros: { nave: n.nave } });
+    }));
+    var detalle = [];
+    respuestas.forEach(function (data) {
+      if (data && data.ok && Array.isArray(data.detalle)) detalle = detalle.concat(data.detalle);
     });
-    const detalle = (data && data.ok && Array.isArray(data.detalle)) ? data.detalle : [];
     detalle.reverse();
 
     const filasHtml = detalle.length ? detalle.map(function (d) {
       return '<tr>' +
         '<td>' + (d.fecha || '—') + '</td>' +
         '<td>' + (d.horaInicio || '—') + '</td>' +
-        '<td>' + (d.nave || '—') + '</td>' +
+        '<td style="white-space:nowrap;">' + (d.nave || '—') + '</td>' +
         '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
         '<td>' + (d.contenedor || '—') + '</td>' +
         '<td>' + (d.sello || '—') + '</td>' +
@@ -1488,8 +1495,13 @@ async function mostrarDetalleSemanaNaves(wk) {
       '<div class="dia-detalle-scroll">' +
         notaSinDetalle +
         (detalle.length ?
-          '<table class="act-table"><thead><tr><th>Fecha</th><th>Hora</th><th>Nave</th><th>Cliente</th><th>Contenedor</th><th>Sello</th><th>Entrega</th><th>Producto</th></tr></thead>' +
-          '<tbody>' + filasHtml + '</tbody></table>' : '') +
+          '<table class="act-table">' +
+            '<colgroup><col style="width:9%"><col style="width:7%"><col style="width:18%">' +
+            '<col style="width:9%"><col style="width:11%"><col style="width:12%">' +
+            '<col style="width:10%"><col style="width:24%"></colgroup>' +
+            '<thead><tr><th>Fecha</th><th>Hora</th><th>Nave</th><th>Cliente</th><th>Contenedor</th><th>Sello</th><th>Entrega</th><th>Producto</th></tr></thead>' +
+            '<tbody>' + filasHtml + '</tbody>' +
+          '</table>' : '') +
       '</div>';
 
     mostrarOverlayDetalle_(titulo, body);
