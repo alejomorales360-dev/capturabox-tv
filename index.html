@@ -222,6 +222,21 @@
   .nave-stats .n.gold{color:var(--gold);}
   .nave-stats .l{font-size:.55vw;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;}
 
+  /* Encabezado de grupo por semana, arriba de las naves de esa semana */
+  .semana-header{
+    display:flex;align-items:center;justify-content:space-between;gap:.6vw;
+    padding:.7vh .9vw;border-radius:.5vw;background:rgba(124,108,216,.1);
+    border:1px solid rgba(124,108,216,.3);margin-top:.4vh;
+  }
+  .semana-header:first-child{margin-top:0;}
+  .semana-header .tit{display:flex;align-items:center;gap:.5vw;font-size:.72vw;font-weight:800;letter-spacing:.05em;color:#b9aef0;}
+  .semana-header .tit.actual{color:var(--gold);}
+  .semana-header .stats{display:flex;gap:.9vw;}
+  .semana-header .stats div{text-align:center;}
+  .semana-header .stats .n{font-family:var(--numfont);font-variant-numeric:tabular-nums;font-weight:800;font-size:.85vw;}
+  .semana-header .stats .n.gold{color:var(--gold);}
+  .semana-header .stats .l{font-size:.55vw;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+
   .footer-note{
     grid-column:1 / -1;text-align:center;font-size:.68vw;color:var(--muted);
     display:flex;align-items:center;justify-content:center;gap:.4vw;padding-top:.2vh;
@@ -1516,7 +1531,7 @@ function pintarNaves(naves) {
   // no hace falta recalcularlos al abrir el modal).
   window._navesPorNombre = porNave;
 
-  cont.innerHTML = Object.values(porNave).reverse().map(function (n) {
+  function naveCardHtml(n) {
     // Chip de semana: WK33. Se resalta en dorado si es la semana en curso.
     var wk = n.semana
       ? '<span class="nave-wk' + (n.semana === SEMANA_ACTUAL ? ' actual' : '') + '">WK' + n.semana + '</span>'
@@ -1537,6 +1552,37 @@ function pintarNaves(naves) {
       '</div>' +
       n.clientes.map(filaCliente).join('') +
     '</div>';
+  }
+
+  // Agrupa las naves por semana: todo lo de la misma semana se suma junto
+  // en un encabezado (consolidados/meta/saldo totales de TODAS las naves
+  // y clientes de esa semana), con sus tarjetas de nave debajo.
+  const porSemana = {};
+  Object.values(porNave).forEach(function (n) {
+    const wk = n.semana || 0;
+    if (!porSemana[wk]) porSemana[wk] = { semana: wk, naves: [], totalCons: 0, totalMeta: 0 };
+    porSemana[wk].naves.push(n);
+    n.clientes.forEach(function (c) {
+      porSemana[wk].totalCons += Number(c.consolidados) || 0;
+      porSemana[wk].totalMeta += Number(c.total) || 0;
+    });
+  });
+
+  const semanasOrdenadas = Object.values(porSemana).sort(function (a, b) { return b.semana - a.semana; });
+
+  cont.innerHTML = semanasOrdenadas.map(function (s) {
+    const saldo = Math.max(0, s.totalMeta - s.totalCons);
+    const esActual = s.semana === SEMANA_ACTUAL;
+    const headerHtml = s.semana ?
+      '<div class="semana-header">' +
+        '<div class="tit' + (esActual ? ' actual' : '') + '">SEMANA WK' + s.semana + ' · ' + s.naves.length + ' nave' + (s.naves.length === 1 ? '' : 's') + '</div>' +
+        '<div class="stats">' +
+          '<div><div class="n">' + s.totalCons + '</div><div class="l">Consolidados</div></div>' +
+          '<div><div class="n">' + s.totalMeta + '</div><div class="l">Meta</div></div>' +
+          '<div><div class="n gold">' + saldo + '</div><div class="l">Saldo</div></div>' +
+        '</div>' +
+      '</div>' : '';
+    return headerHtml + s.naves.reverse().map(naveCardHtml).join('');
   }).join('');
 
   if (!cont._clickBound) {
