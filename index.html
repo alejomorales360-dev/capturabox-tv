@@ -1353,6 +1353,9 @@ function mostrarDetalleResumenSemana() {
 async function mostrarDetalleNave(nave) {
   const grupo = (window._navesPorNombre && window._navesPorNombre[nave]) || { clientes: [] };
 
+  const totalConsolidados = grupo.clientes.reduce(function (s, c) { return s + (Number(c.consolidados) || 0); }, 0);
+  const totalMeta = grupo.clientes.reduce(function (s, c) { return s + (Number(c.total) || 0); }, 0);
+
   const chipsMeta = grupo.clientes.length ? '<div class="dia-detalle-resumen">' +
     grupo.clientes.map(function (c) {
       return '<div class="dia-detalle-chip">' +
@@ -1361,7 +1364,14 @@ async function mostrarDetalleNave(nave) {
         '<span class="n">' + fmt(c.consolidados) + '</span>' +
         '<span class="m3">/ ' + fmt(c.total) + ' meta</span>' +
       '</div>';
-    }).join('') + '</div>' : '';
+    }).join('') +
+    (grupo.clientes.length > 1 ?
+      '<div class="dia-detalle-chip" style="border-color:rgba(255,255,255,.25);">' +
+        '<span class="nombre">TOTAL SEMANA</span>' +
+        '<span class="n">' + fmt(totalConsolidados) + '</span>' +
+        '<span class="m3">/ ' + fmt(totalMeta) + ' meta</span>' +
+      '</div>' : '') +
+  '</div>' : '';
 
   mostrarOverlayDetalle_('🚢 ' + nave, chipsMeta +
     '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>');
