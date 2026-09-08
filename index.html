@@ -229,6 +229,8 @@
     border:1px solid rgba(124,108,216,.3);margin-top:.4vh;
   }
   .semana-header:first-child{margin-top:0;}
+  .semana-header.clickable{cursor:pointer;transition:background .15s;}
+  .semana-header.clickable:hover{background:rgba(124,108,216,.18);}
   .semana-header .tit{display:flex;align-items:center;gap:.5vw;font-size:.72vw;font-weight:800;letter-spacing:.05em;color:#b9aef0;}
   .semana-header .tit.actual{color:var(--gold);}
   .semana-header .stats{display:flex;gap:.9vw;}
@@ -1429,6 +1431,74 @@ async function mostrarDetalleNave(nave) {
   }
 }
 
+/* Detalle al hacer clic en el encabezado "SEMANA WKxx" — todas las naves
+   de esa semana juntas. A diferencia de mostrarDetalleNave (que filtra
+   por nave, sin rango de fecha), aquí se pide informeConsolidado por el
+   RANGO DE FECHAS de la semana (lunes a domingo), sin filtrar por nave,
+   para traer los contenedores de todas las naves de esa semana en una
+   sola tabla (con columna Nave para distinguirlas). */
+async function mostrarDetalleSemanaNaves(wk) {
+  const grupo = (window._navesPorSemana && window._navesPorSemana[wk]) || { naves: [] };
+  const titulo = '📅 Semana WK' + wk + ' · Todas las naves';
+
+  const chipsNaves = grupo.naves.length ? '<div class="dia-detalle-resumen">' +
+    grupo.naves.map(function (n) {
+      const cons = n.clientes.reduce(function (s, c) { return s + (Number(c.consolidados) || 0); }, 0);
+      const meta = n.clientes.reduce(function (s, c) { return s + (Number(c.total) || 0); }, 0);
+      return '<div class="dia-detalle-chip">' +
+        '<span class="dot" style="background:' + colorCliente(n.nave) + ';"></span>' +
+        '<span class="nombre">' + n.nave + '</span>' +
+        '<span class="n">' + fmt(cons) + '</span>' +
+        '<span class="m3">/ ' + fmt(meta) + ' meta</span>' +
+      '</div>';
+    }).join('') + '</div>' : '';
+
+  mostrarOverlayDetalle_(titulo, chipsNaves +
+    '<div class="dia-detalle-scroll"><div class="act-empty">Cargando contenedores…</div></div>');
+
+  try {
+    const anio = new Date().getFullYear();
+    const lunes = lunesDeSemanaISO(anio, wk);
+    const domingo = new Date(lunes); domingo.setDate(domingo.getDate() + 6);
+    const data = await pedirJSON('informeConsolidado', {
+      filtros: { fechaDesde: fechaISO(lunes), fechaHasta: fechaISO(domingo) }
+    });
+    const detalle = (data && data.ok && Array.isArray(data.detalle)) ? data.detalle : [];
+    detalle.reverse();
+
+    const filasHtml = detalle.length ? detalle.map(function (d) {
+      return '<tr>' +
+        '<td>' + (d.fecha || '—') + '</td>' +
+        '<td>' + (d.horaInicio || '—') + '</td>' +
+        '<td>' + (d.nave || '—') + '</td>' +
+        '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
+        '<td>' + (d.contenedor || '—') + '</td>' +
+        '<td>' + (d.sello || '—') + '</td>' +
+        '<td>' + (d.entrega || '—') + '</td>' +
+        '<td>' + (d.producto || '—') + '</td>' +
+      '</tr>';
+    }).join('') : '';
+
+    const notaSinDetalle = !detalle.length ?
+      '<div class="kpi-detalle-sub" style="color:var(--muted);text-transform:none;font-weight:600;">' +
+      'Sin contenedores con detalle disponible para esta semana (si ya se archivaron al histórico, el detalle línea por línea ya no queda accesible — solo los totales de arriba).</div>'
+      : '';
+
+    const body = chipsNaves +
+      '<div class="dia-detalle-scroll">' +
+        notaSinDetalle +
+        (detalle.length ?
+          '<table class="act-table"><thead><tr><th>Fecha</th><th>Hora</th><th>Nave</th><th>Cliente</th><th>Contenedor</th><th>Sello</th><th>Entrega</th><th>Producto</th></tr></thead>' +
+          '<tbody>' + filasHtml + '</tbody></table>' : '') +
+      '</div>';
+
+    mostrarOverlayDetalle_(titulo, body);
+  } catch (e) {
+    mostrarOverlayDetalle_(titulo, chipsNaves +
+      '<div class="dia-detalle-scroll"><div class="act-empty">No se pudo cargar el detalle de esta semana.</div></div>');
+  }
+}
+
 function filaVacia(cols, texto) {
   return '<tr><td colspan="' + cols + '" class="act-empty">' + texto + '</td></tr>';
 }
@@ -1570,11 +1640,15 @@ function pintarNaves(naves) {
 
   const semanasOrdenadas = Object.values(porSemana).sort(function (a, b) { return b.semana - a.semana; });
 
+  // Se guarda para poder armar el modal de "todas las naves de la semana"
+  // al hacer clic en el encabezado, sin recalcular nada.
+  window._navesPorSemana = porSemana;
+
   cont.innerHTML = semanasOrdenadas.map(function (s) {
     const saldo = Math.max(0, s.totalMeta - s.totalCons);
     const esActual = s.semana === SEMANA_ACTUAL;
     const headerHtml = s.semana ?
-      '<div class="semana-header">' +
+      '<div class="semana-header clickable" data-semana="' + s.semana + '">' +
         '<div class="tit' + (esActual ? ' actual' : '') + '">SEMANA WK' + s.semana + ' · ' + s.naves.length + ' nave' + (s.naves.length === 1 ? '' : 's') + '</div>' +
         '<div class="stats">' +
           '<div><div class="n">' + s.totalCons + '</div><div class="l">Consolidados</div></div>' +
@@ -1587,6 +1661,8 @@ function pintarNaves(naves) {
 
   if (!cont._clickBound) {
     cont.addEventListener('click', function (e) {
+      var header = e.target.closest('.semana-header');
+      if (header && header.dataset.semana) { mostrarDetalleSemanaNaves(Number(header.dataset.semana)); return; }
       var card = e.target.closest('.nave-card');
       if (card && card.dataset.nave) mostrarDetalleNave(card.dataset.nave);
     });
