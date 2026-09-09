@@ -274,6 +274,12 @@
   .dia-detalle-chip{
     display:flex;align-items:center;gap:.5vw;background:rgba(255,255,255,.03);
     border:1px solid var(--card-line);border-radius:.6vw;padding:.7vh 1vw;font-size:.78vw;
+    cursor:pointer;transition:background .15s,border-color .15s;
+  }
+  .dia-detalle-chip:hover{background:rgba(255,255,255,.08);}
+  .dia-detalle-chip.activo{background:rgba(255,255,255,.14);border-color:var(--teal);}
+  .dia-detalle-resumen .dia-detalle-chip-hint{
+    display:flex;align-items:center;font-size:.72vw;color:var(--muted);padding:.7vh 0;
   }
   .dia-detalle-chip .dot{width:.6vw;height:.6vw;min-width:7px;min-height:7px;border-radius:50%;flex-shrink:0;}
   .dia-detalle-chip .nombre{font-weight:700;}
@@ -1153,14 +1159,40 @@ function cerrarOverlayDetalle_() {
 
 function _chipsPorCliente_(lista, campoN, campoM3) {
   if (!lista || !lista.length) return '';
-  return '<div class="dia-detalle-resumen">' + lista.map(function (c) {
-    return '<div class="dia-detalle-chip">' +
+  const chips = lista.map(function (c) {
+    const cliEsc = String(c.cliente || '').replace(/'/g, "\\'");
+    return '<div class="dia-detalle-chip" onclick="_filtrarChipCliente_(this, \'' + cliEsc + '\')">' +
       '<span class="dot" style="background:' + colorCliente(c.cliente) + ';"></span>' +
       '<span class="nombre">' + c.cliente + '</span>' +
       (campoN ? '<span class="n">' + fmt(c[campoN]) + '</span>' : '') +
       (campoM3 ? '<span class="m3">' + fmt(c[campoM3], 1) + ' m³</span>' : '') +
     '</div>';
-  }).join('') + '</div>';
+  }).join('');
+  return '<div class="dia-detalle-resumen">' + chips +
+    (lista.length > 1 ? '<div class="dia-detalle-chip-hint">Toca un cliente para filtrar</div>' : '') +
+  '</div>';
+}
+
+/* Filtra la tabla del detalle abierto por cliente al tocar un chip.
+   Reutilizable entre Consolidados/Recepción/etc. — las filas de la
+   tabla llevan data-cliente-fila con el mismo nombre del chip. Tocar
+   el chip ya activo quita el filtro (vuelve a mostrar todo). */
+function _filtrarChipCliente_(el, cliente) {
+  const chips = el.parentElement.querySelectorAll('.dia-detalle-chip');
+  const yaActivo = el.classList.contains('activo');
+  chips.forEach(function (c) { c.classList.remove('activo'); });
+
+  const overlay = document.getElementById('kpiDetalleOverlay') || document.body;
+  const filas = overlay.querySelectorAll('[data-cliente-fila]');
+
+  if (yaActivo) {
+    filas.forEach(function (f) { f.style.display = ''; });
+    return;
+  }
+  el.classList.add('activo');
+  filas.forEach(function (f) {
+    f.style.display = (f.getAttribute('data-cliente-fila') === cliente) ? '' : 'none';
+  });
 }
 
 function mostrarDetalleConsolidadosHoy() {
@@ -1170,7 +1202,7 @@ function mostrarDetalleConsolidadosHoy() {
   const parciales = window._kpiParciales || [];
 
   const filasHtml = detalleHoy.length ? detalleHoy.map(function (d) {
-    return '<tr>' +
+    return '<tr data-cliente-fila="' + (d.cliente || '') + '">' +
       '<td>' + (d.horaInicio || '—') + '</td>' +
       '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
       '<td>' + (d.nave || '—') + '</td>' +
@@ -1182,7 +1214,7 @@ function mostrarDetalleConsolidadosHoy() {
   }).join('') : filaVacia(7, 'Sin consolidados confirmados hoy.');
 
   const filasProceso = parciales.length ? parciales.map(function (p) {
-    return '<tr>' +
+    return '<tr data-cliente-fila="' + (p.cliente || '') + '">' +
       '<td>' + (p.horaInicio || '—') + '</td>' +
       '<td>' + (p.contenedor || '—') + '</td>' +
       '<td style="color:' + colorCliente(p.cliente || '') + ';font-weight:700;">' + (p.cliente || '—') + '</td>' +
@@ -1212,7 +1244,7 @@ function mostrarDetalleRecepcionHoy() {
   const detalleHoy = (window._kpiDetalleRecepcionSemana || []).filter(function (d) { return d.fecha === hoyCl; });
 
   const filasHtml = detalleHoy.length ? detalleHoy.map(function (d) {
-    return '<tr>' +
+    return '<tr data-cliente-fila="' + (d.cliente || '') + '">' +
       '<td>' + (d.horaInicio || '—') + '</td>' +
       '<td>' + (d.horaTermino || '—') + '</td>' +
       '<td style="color:' + colorCliente(d.cliente || '') + ';font-weight:700;">' + (d.cliente || '—') + '</td>' +
