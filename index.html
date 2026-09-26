@@ -119,6 +119,37 @@
   .btn-hist:active{transform:scale(.96);}
   .btn-hist .ic{font-size:.95vw;}
 
+  /* Pill de "viendo una fecha pasada" — reemplaza al pill EN LÍNEA
+     mientras se navega a un día/semana específico. */
+  .status-pill.viendo{background:rgba(224,165,44,.14);border-color:rgba(224,165,44,.45);cursor:pointer;}
+  .status-pill.viendo .dot{background:var(--gold);box-shadow:0 0 6px var(--gold);}
+  .status-pill.viendo .txt b{color:var(--gold);}
+
+  /* ===== SELECTOR DE FECHA (ir a un día/semana específico) ===== */
+  .fecha-overlay{
+    position:fixed;inset:0;z-index:9500;display:none;
+    background:rgba(0,0,0,.6);align-items:center;justify-content:center;
+  }
+  .fecha-overlay.open{display:flex;}
+  .fecha-box{
+    background:#101c2b;border:1px solid var(--card-line);border-radius:1vw;
+    padding:2.2vh 2.2vw;width:min(360px,90vw);text-align:center;
+  }
+  .fecha-box .ttl{font-size:1.1vw;font-weight:800;margin-bottom:.4vh;}
+  .fecha-box .sub{font-size:.72vw;color:var(--muted);margin-bottom:1.6vh;}
+  .fecha-box input[type=date]{
+    width:100%;box-sizing:border-box;padding:1vh 1vw;border-radius:.6vw;border:1px solid var(--card-line);
+    background:rgba(255,255,255,.06);color:var(--ink);font-size:1vw;margin-bottom:1.6vh;
+    color-scheme:dark;
+  }
+  .fecha-box .btns{display:flex;gap:.8vw;}
+  .fecha-box button{
+    flex:1;cursor:pointer;border-radius:.6vw;padding:1vh 1vw;font-size:.8vw;font-weight:700;
+    border:1px solid var(--card-line);background:rgba(255,255,255,.08);color:var(--ink);
+  }
+  .fecha-box button.ir{background:var(--indigo);border-color:var(--indigo);color:#fff;}
+  .fecha-box button:hover{opacity:.9;}
+
   /* ===== MAIN (fila 2, col izquierda) ===== */
   main{grid-column:1;display:grid;grid-template-columns:1fr 1.75fr;gap:1.4vw;min-height:31vh;}
 
@@ -409,15 +440,21 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:1.2vw;">
+        <div class="btn-hist" id="btnFecha" onclick="abrirSelectorFecha()">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Ir a fecha
+        </div>
         <div class="btn-hist" id="btnHistorico" onclick="abrirHistorico()">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
           Histórico
         </div>
-        <div class="status-pill">
+        <div class="status-pill" id="pillEstado" onclick="if(fechaVistaISO) volverAEnVivo();">
           <span class="dot" id="dotEstado"></span>
-          <div class="txt"><b>EN LÍNEA</b><span class="sub" id="txtActualizado">Cargando…</span></div>
+          <div class="txt"><b id="pillEstadoTxt">EN LÍNEA</b><span class="sub" id="txtActualizado">Cargando…</span></div>
         </div>
         <div class="clockbox">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -430,7 +467,7 @@
 
     <main>
       <div class="card ring-card clickable" onclick="mostrarDetalleBodega()">
-        <div class="label">Ocupación de bodega</div>
+        <div class="label" id="labelOcupacionBodega">Ocupación de bodega</div>
         <div class="ring-body">
         <div class="ring-wrap">
           <svg viewBox="0 0 220 220">
@@ -610,6 +647,19 @@
 
   </div>
 
+  <!-- ============ SELECTOR DE FECHA (ir a un día/semana específico) ============ -->
+  <div class="fecha-overlay" id="fechaOverlay">
+    <div class="fecha-box">
+      <div class="ttl">📅 Ir a una fecha</div>
+      <div class="sub">Se muestra ese día y la semana (lun–dom) a la que pertenece.</div>
+      <input type="date" id="fechaSeleccionada">
+      <div class="btns">
+        <button onclick="cerrarSelectorFecha()">Cancelar</button>
+        <button class="ir" onclick="irAFechaSeleccionada()">Ver esa fecha</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ VISTA HISTÓRICA ============ -->
   <div class="hist-overlay" id="histOverlay">
     <div class="hist-head">
@@ -692,6 +742,72 @@ let ultimaActualizacion = null;
 let chartTendencia = null;
 let ultimoSnapshot = {};
 
+/* ===== IR A FECHA (ver un día/semana específico en vez de "hoy" en vivo) ===== */
+let fechaVistaISO = null; // null = en vivo (hoy real); si no, "YYYY-MM-DD"
+const FECHA_VISTA_AUTOCLOSE_SEG = 120; // la TV vuelve sola a EN VIVO si nadie toca nada
+let fechaVistaAutocloseTimer = null;
+let fechaVistaCuenta = FECHA_VISTA_AUTOCLOSE_SEG;
+
+function abrirSelectorFecha() {
+  document.getElementById('fechaSeleccionada').value = fechaVistaISO || fechaISO(new Date());
+  document.getElementById('fechaOverlay').classList.add('open');
+}
+function cerrarSelectorFecha() {
+  document.getElementById('fechaOverlay').classList.remove('open');
+}
+function irAFechaSeleccionada() {
+  const val = document.getElementById('fechaSeleccionada').value;
+  if (!val) return;
+  fechaVistaISO = val;
+  cerrarSelectorFecha();
+  iniciarAutocierreFechaVista_();
+  actualizarPillEstado_();
+  ultimoSnapshot = {}; // fuerza a repintar todo con los datos de la fecha elegida
+  actualizarTodo();
+}
+function volverAEnVivo() {
+  if (!fechaVistaISO) return;
+  fechaVistaISO = null;
+  detenerAutocierreFechaVista_();
+  actualizarPillEstado_();
+  ultimoSnapshot = {};
+  actualizarTodo();
+}
+function iniciarAutocierreFechaVista_() {
+  clearInterval(fechaVistaAutocloseTimer);
+  fechaVistaCuenta = FECHA_VISTA_AUTOCLOSE_SEG;
+  fechaVistaAutocloseTimer = setInterval(function () {
+    fechaVistaCuenta--;
+    if (fechaVistaCuenta <= 0) volverAEnVivo();
+  }, 1000);
+}
+function detenerAutocierreFechaVista_() {
+  clearInterval(fechaVistaAutocloseTimer);
+  fechaVistaAutocloseTimer = null;
+}
+['click', 'touchstart', 'mousemove', 'keydown'].forEach(function (ev) {
+  document.addEventListener(ev, function () {
+    if (fechaVistaAutocloseTimer) fechaVistaCuenta = FECHA_VISTA_AUTOCLOSE_SEG;
+  }, { passive: true });
+});
+
+function actualizarPillEstado_() {
+  const pill = document.getElementById('pillEstado');
+  const txt = document.getElementById('pillEstadoTxt');
+  const labelBodega = document.getElementById('labelOcupacionBodega');
+  if (!pill || !txt) return;
+  if (fechaVistaISO) {
+    const f = new Date(fechaVistaISO + 'T12:00:00');
+    pill.classList.add('viendo');
+    txt.textContent = '📅 ' + f.toLocaleDateString('es-CL', { day: 'numeric', month: 'long' }).toUpperCase();
+    if (labelBodega) labelBodega.textContent = 'Ocupación de bodega (dato en vivo)';
+  } else {
+    pill.classList.remove('viendo');
+    txt.textContent = 'EN LÍNEA';
+    if (labelBodega) labelBodega.textContent = 'Ocupación de bodega';
+  }
+}
+
 /* Datos de naves guardados para la vista histórica */
 let navesCache = [];
 
@@ -731,6 +847,7 @@ setInterval(tickReloj, 1000);
 function tickIndicador() {
   const txt = document.getElementById('txtActualizado');
   const dot = document.getElementById('dotEstado');
+  if (fechaVistaISO) { txt.textContent = 'Toca para volver a EN VIVO'; dot.className = 'dot'; return; }
   if (!ultimaActualizacion) { txt.textContent = 'Cargando…'; return; }
   const seg = Math.round((Date.now() - ultimaActualizacion) / 1000);
   txt.textContent = seg < 5 ? 'Actualizado ahora' : ('Actualizado hace ' + seg + 's');
@@ -821,9 +938,9 @@ function gcDesgloseTexto_(arr) {
   if (!arr.length) return 'Sin movimientos hoy.';
   return arr.slice(0, 3).map(function (c) { return c.cliente + ' <b>' + c.cant + '</b>'; }).join(' &nbsp;·&nbsp; ');
 }
-async function cargarGateControlDashboard() {
+async function cargarGateControlDashboard(hoy) {
   try {
-    var hoy = new Date();
+    hoy = hoy || new Date();
     var rangoHoy = { fechaDesde: fechaISO(hoy), fechaHasta: fechaISO(hoy) };
     var data = await pedirJSON('listarMovimientosGateControl', rangoHoy);
     var movs = (data && data.ok && Array.isArray(data.movimientos)) ? data.movimientos : [];
@@ -844,24 +961,36 @@ async function cargarGateControlDashboard() {
 
 async function actualizarTodo() {
   try {
-    const hoy = new Date();
+    const enVivo = !fechaVistaISO;
+    const hoy = enVivo ? new Date() : new Date(fechaVistaISO + 'T12:00:00');
     const diaSemana = hoy.getDay();
     const diasDesdeLunes = diaSemana === 0 ? 6 : diaSemana - 1;
     const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - diasDesdeLunes);
+    // En vivo, la semana llega solo hasta hoy (los días futuros no tienen
+    // datos todavía); viendo una fecha pasada, la semana ya está completa,
+    // así que se muestra lun-dom entera.
+    const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
     const rangoHoy = { fechaDesde: fechaISO(hoy), fechaHasta: fechaISO(hoy) };
-    const rangoSemana = { fechaDesde: fechaISO(lunes), fechaHasta: fechaISO(hoy) };
+    const rangoSemana = { fechaDesde: fechaISO(lunes), fechaHasta: fechaISO(enVivo ? hoy : domingo) };
 
     const [dataHoy, dataSemana, dataRecepcion, dataConsolidado, dataPreparados, dataNaves] = await Promise.all([
       pedirJSON('dashboardEjecutivo', rangoHoy),
       pedirJSON('dashboardEjecutivo', rangoSemana),
       pedirJSON('informeRecepcion', { filtros: rangoSemana }),
       pedirJSON('informeConsolidado', { filtros: rangoSemana }),
-      pedirJSON('ultimosPreparados', { limite: 8 }),
+      enVivo ? pedirJSON('ultimosPreparados', { limite: 8 }) : Promise.resolve(null),
       pedirJSON('avanceNaves', {})
     ]);
 
-    cargarParcialsDashboard();
-    cargarGateControlDashboard();
+    if (enVivo) {
+      cargarParcialsDashboard();
+    } else {
+      // "En proceso" es un concepto solo de HOY en vivo — no aplica a una
+      // fecha pasada, así que se deja en blanco en vez de mostrar lo actual.
+      document.getElementById('kpiParciales').textContent = '—';
+      document.getElementById('kpiParcialesBreak').innerHTML = '';
+    }
+    cargarGateControlDashboard(hoy);
 
     // Cache para los modales de detalle de las tarjetas KPI (Consolidados
     // hoy, Recepción hoy, Volumen movilizado hoy, Ocupación bodega) — se
@@ -879,7 +1008,14 @@ async function actualizarTodo() {
     }
     if (dataRecepcion && dataRecepcion.ok) pintarRecepciones(dataRecepcion.detalle || []);
     if (dataConsolidado && dataConsolidado.ok) pintarConsolidados(dataConsolidado.detalle || []);
-    if (dataPreparados && dataPreparados.ok) pintarPreparados(dataPreparados.items || []);
+    if (enVivo) {
+      if (dataPreparados && dataPreparados.ok) pintarPreparados(dataPreparados.items || []);
+    } else {
+      // Esta tabla siempre trae "lo más reciente" sin filtro de fecha —
+      // mostrarla mezclada con datos de una fecha pasada sería engañoso.
+      pintarSiCambio('listPreparados', 'preparados',
+        filaVacia(6, 'Esta tabla siempre muestra los más recientes — no aplica en modo "Ir a fecha". Vuelve a EN VIVO para verla.'));
+    }
     if (dataNaves && dataNaves.ok) {
       navesCache = dataNaves.naves || [];
       pintarNaves(navesCache);
@@ -1607,13 +1743,26 @@ function pintarRecepciones(detalle) {
 function pintarConsolidados(detalle) {
   const ultimos = detalle.slice(-8).reverse();
 
-  cargarParcialsDashboard().then(function(parciales) {
-    var filasCerradas = ultimos.map(function (d) {
+  function filasCerradasHtml_() {
+    return ultimos.map(function (d) {
       return '<tr><td class="dotcell"><span class="rowdot" style="background:#3fae6a;"></span></td>' +
         '<td>' + (d.fecha || '\u2014') + '</td>' +
         '<td>' + (d.horaInicio || '\u2014') + '</td>' +
         '<td>' + (d.contenedor || '\u2014') + '</td><td>' + (d.cliente || '\u2014') + '</td><td>' + (d.nave || '\u2014') + '</td></tr>';
     });
+  }
+
+  if (fechaVistaISO) {
+    // "En proceso" es un concepto solo de HOY en vivo \u2014 no tiene sentido
+    // mezclarlo con el hist\u00f3rico de otro d\u00eda.
+    var filasCerradas = filasCerradasHtml_();
+    var html = !filasCerradas.length ? filaVacia(6, 'Sin consolidados registrados esa semana.') : filasCerradas.join('');
+    pintarSiCambio('listConsolidados', 'consolidados', html);
+    return;
+  }
+
+  cargarParcialsDashboard().then(function(parciales) {
+    var filasCerradas = filasCerradasHtml_();
 
     var filasParciales = (parciales || []).map(function (p) {
       return '<tr style="background:rgba(224,138,43,.08);"><td class="dotcell"><span class="rowdot" style="background:#e0a52c;"></span></td>' +
